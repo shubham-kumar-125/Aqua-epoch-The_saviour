@@ -64,6 +64,10 @@ class ModelServiceTests(unittest.TestCase):
         self.assertNotIn("Potability", FEATURE_COLUMNS)
         self.assertEqual(self.service.info()["regression_feature_columns"], list(REGRESSION_FEATURE_COLUMNS))
 
+    def test_model_info_exposes_updated_tds_form_limit(self) -> None:
+        self.assertEqual(self.service.info()["user_input_specs"]["TDS"]["min"], 0.0)
+        self.assertEqual(self.service.info()["user_input_specs"]["TDS"]["max"], 50000.0)
+
 
 if __name__ == "__main__":
     unittest.main()

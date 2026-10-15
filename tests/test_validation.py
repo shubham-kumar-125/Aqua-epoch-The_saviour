@@ -1,6 +1,6 @@
 import unittest
 
-from aqua_epoch.config import USER_INPUT_FEATURES
+from aqua_epoch.config import USER_INPUT_FEATURES, USER_INPUT_SPECS
 from aqua_epoch.validation import validate_payload
 
 
@@ -32,6 +32,20 @@ class ValidationTests(unittest.TestCase):
         _, errors, warnings = validate_payload(payload, ranges())
         self.assertEqual(errors, {})
         self.assertTrue(any("TDS" in warning for warning in warnings))
+
+    def test_tds_accepts_zero_and_50000_and_rejects_values_above_limit(self) -> None:
+        feature_ranges = ranges()
+        for value in (0, 50000):
+            with self.subTest(value=value):
+                payload = {"Turbidity": 4, "Hardness": 180, "TDS": value}
+                cleaned, errors, _ = validate_payload(payload, feature_ranges)
+                self.assertEqual(errors, {})
+                self.assertEqual(cleaned["TDS"], float(value))
+
+        payload = {"Turbidity": 4, "Hardness": 180, "TDS": 50000.1}
+        _, errors, _ = validate_payload(payload, feature_ranges)
+        self.assertIn("TDS", errors)
+        self.assertEqual(USER_INPUT_SPECS["TDS"]["max"], 50000.0)
 
     def test_flags_tail_values_inside_observed_minimum_and_maximum(self) -> None:
         feature_ranges = ranges()

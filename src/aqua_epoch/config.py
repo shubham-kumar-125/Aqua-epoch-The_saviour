@@ -74,7 +74,7 @@ USER_INPUT_SPECS = {
         "label": "Total dissolved solids (TDS)",
         "unit": "mg/L",
         "min": 0.0,
-        "max": 10000.0,
+        "max": 50000.0,
         "acceptable_limit": 500.0,
         "permissible_limit": 2000.0,
         "tooltip": "BIS IS 10500:2012: acceptable up to 500 mg/L; permissible up to 2000 mg/L where no alternate source is available.",
