@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.pytest_cache/
+artifacts/*.png
+artifacts/*.json
+models/*.joblib
+docs/round1_technical_deck.pdf
+docs/round1_submission.md

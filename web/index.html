@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#073b4c" />
+    <title>Aqua-Epoch | Water Intelligence</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <nav class="topbar" aria-label="Application header">
+          <div class="brand"><span class="brand-mark">◉</span><span>AQUA<span>·</span>EPOCH</span></div>
+          <div class="topbar-meta"><span class="live-indicator"><i></i> MODEL ONLINE</span><span>techFEST'26 / SLIET</span></div>
+        </nav>
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <div class="eyebrow">WATER QUALITY INTELLIGENCE SYSTEM</div>
+            <h1>Read the water.<br /><em>Reveal the signal.</em></h1>
+            <p class="lede">A live prediction console that turns three core water measurements into a safety probability and pH estimate.</p>
+            <div class="hero-stats" aria-label="System capabilities">
+              <div><strong>03</strong><span>field metrics</span></div>
+              <div><strong>02</strong><span>ML predictions</span></div>
+              <div><strong>LIVE</strong><span>REST inference</span></div>
+            </div>
+          </div>
+          <div class="aqua-visual" aria-hidden="true">
+            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+            <div class="water-core"><span>H₂O</span><small>ANALYSE</small></div>
+            <div class="float-tag tag-one">TURBIDITY</div>
+            <div class="float-tag tag-two">TDS</div>
+            <div class="float-tag tag-three">HARDNESS</div>
+          </div>
+        </div>
+        <div class="hero-note"><span>NOTICE</span> Decision-support prototype — verify all conclusions through accredited laboratory testing.</div>
+      </header>
+
+      <section class="status-row" aria-live="polite">
+        <span id="connection-dot" class="dot"></span>
+        <span id="connection-status">Loading model information…</span>
+        <span id="model-version" class="version"></span>
+      </section>
+
+      <section class="workspace">
+        <form id="prediction-form" class="control-panel" novalidate>
+          <div class="form-heading">
+            <div>
+              <p class="eyebrow">01 / INPUT CONSOLE</p>
+              <h2>Sample scan</h2>
+            </div>
+            <button id="load-sample" type="button" class="quiet-button"><span>↻</span> Load demo sample</button>
+          </div>
+          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance; the remaining metrics are transparently completed with training-median defaults.</p>
+          <div id="form-error" class="form-error" hidden></div>
+          <div id="feature-fields" class="fields"></div>
+          <div class="panel-footer"><span><i class="shield">◈</i> Physical-range validation enabled</span><span>3 inputs · 14 disclosed defaults</span></div>
+          <button id="submit-button" type="submit" class="predict-button"><span>Initiate analysis</span> <b>→</b></button>
+        </form>
+
+        <aside id="result-panel" class="result-panel" aria-live="polite">
+          <div class="result-empty" id="empty-state">
+            <div class="droplet">◒</div>
+            <h2>Awaiting a sample</h2>
+            <p>Validated predictions for water safety and pH will appear here.</p>
+          </div>
+          <div id="result-content" hidden>
+            <div class="result-heading"><p class="eyebrow">02 / PREDICTION OUTPUT</p><span class="pulse">LIVE</span></div>
+            <div id="safety-card" class="safety-card">
+              <span class="card-label">Potability signal</span>
+              <span id="safety-label">—</span>
+              <strong id="safe-probability">—</strong>
+              <small>model probability of safe (1)</small>
+            </div>
+            <div class="ph-card">
+              <span>Estimated pH <i>continuous model output</i></span>
+              <strong id="ph-value">—</strong>
+              <small id="ph-note">continuous regression estimate</small>
+            </div>
+            <div class="guidance-section">
+              <div class="guidance-title"><span>BIS input guidance</span><small>Input-level reference only</small></div>
+              <div id="guidance-grid" class="guidance-grid"></div>
+            </div>
+            <div id="warnings" class="warnings" hidden></div>
+            <p id="disclaimer" class="disclaimer"></p>
+          </div>
+        </aside>
+      </section>
+
+      <section class="method">
+        <p class="eyebrow">MODEL TELEMETRY</p>
+        <div class="method-grid">
+          <p><strong><i>◉</i> Task A / Classification</strong><span id="class-metrics">Loading evaluation metrics…</span></p>
+          <p><strong><i>◌</i> Task B / Regression</strong><span id="reg-metrics">Loading evaluation metrics…</span></p>
+          <p><strong><i>◇</i> Human verification</strong><span>Predictions are never water-quality certificates.</span></p>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
