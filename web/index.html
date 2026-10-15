@@ -80,10 +80,10 @@
             </div>
             <button id="load-sample" type="button" class="quiet-button"><span aria-hidden="true">↻</span> Try a sample</button>
           </div>
-          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance; four additional model inputs use training-median defaults, and the pH model receives the classifier's predicted Potability label.</p>
+          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance. Both models use these readings directly; the pH estimate also uses the classifier's Safe probability.</p>
           <div id="form-error" class="form-error" hidden></div>
           <div id="feature-fields" class="fields"></div>
-          <div class="panel-footer"><span><i class="shield">◈</i> Values checked before analysis</span><span>3 readings <i class="footer-separator"></i> 4 disclosed defaults</span></div>
+          <div class="panel-footer"><span><i class="shield">◈</i> Values checked before analysis</span><span>3 readings <i class="footer-separator"></i> 3 model inputs</span></div>
           <button id="submit-button" type="submit" class="predict-button"><span>Explore water insights</span> <b aria-hidden="true">→</b></button>
         </form>
 
@@ -104,7 +104,7 @@
             <div class="ph-card">
               <span>Experimental pH estimate <i>not a laboratory result</i></span>
               <strong id="ph-value">—</strong>
-              <small id="ph-note">experimental estimate using predicted Potability</small>
+              <small id="ph-note">experimental estimate using classifier probability</small>
             </div>
             <div class="guidance-section">
               <div class="guidance-title"><span>BIS reference points</span><small>For entered measurements</small></div>

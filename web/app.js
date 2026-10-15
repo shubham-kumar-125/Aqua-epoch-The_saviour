@@ -99,10 +99,11 @@ function displayResult(result) {
     ? 'held-out false-safe errors — not a safety guarantee'
     : 'model probability of safe (1)';
   document.querySelector('#ph-value').textContent = result.predicted_ph.toFixed(2);
+  const safeProbability = `${(result.ph_classifier_safe_probability * 100).toFixed(1)}% Safe`;
   document.querySelector('#ph-note').textContent = result.ph_prediction_caution
-    ? `weak validation signal · uses predicted Potability (${result.ph_potability_input})`
+    ? `weak validation signal · uses classifier probability (${safeProbability})`
     : result.ph_within_physical_range
-      ? `experimental estimate · uses predicted Potability (${result.ph_potability_input})`
+      ? `experimental estimate · uses classifier probability (${safeProbability})`
       : 'outside physical pH range — verify reading';
   document.querySelector('#disclaimer').textContent = result.disclaimer;
   displayGuidance(result.input_guidance);

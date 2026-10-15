@@ -34,13 +34,11 @@ class ModelServiceTests(unittest.TestCase):
         )
         if result["ph_prediction_caution"]:
             self.assertTrue(any("weak held-out predictive signal" in warning for warning in result["warnings"]))
-        self.assertEqual(len(result["defaulted_features"]), 4)
-        self.assertEqual(
-            result["ph_potability_input"],
-            "Safe" if result["safety_code"] else "Unsafe",
-        )
+        self.assertEqual(result["defaulted_features"], [])
+        self.assertEqual(result["ph_potability_input"], "classifier Safe probability")
+        self.assertEqual(result["ph_classifier_safe_probability"], result["safe_probability"])
         self.assertEqual(len(result["input_guidance"]), 3)
-        self.assertTrue(any("classifier prediction" in warning for warning in result["warnings"]))
+        self.assertTrue(any("classifier's predicted Safe probability" in warning for warning in result["warnings"]))
         self.assertTrue(any("outside the central 98%" in warning and "TDS" in warning for warning in result["warnings"]))
 
     def test_predict_rejects_incomplete_panel(self) -> None:
@@ -57,9 +55,23 @@ class ModelServiceTests(unittest.TestCase):
         result = self.service.predict(payload)
         self.assertEqual(result["defaulted_features"], [])
         self.assertEqual(set(result["entered_metrics"]), set(FEATURE_COLUMNS))
+        self.assertEqual(
+            set(result["unused_metrics"]),
+            set(FEATURE_COLUMNS) - set(USER_INPUT_FEATURES),
+        )
+        self.assertTrue(
+            any("do not use optional measurement" in warning for warning in result["warnings"])
+        )
 
-    def test_pH_regression_uses_notebook_features_and_classifier_output(self) -> None:
-        self.assertEqual(REGRESSION_FEATURE_COLUMNS, ("Hardness", "Alkalinity", "Potability"))
+    def test_pH_regression_uses_form_features_and_classifier_probability(self) -> None:
+        self.assertEqual(
+            self.service.info()["classification_feature_columns"],
+            list(USER_INPUT_FEATURES),
+        )
+        self.assertEqual(
+            REGRESSION_FEATURE_COLUMNS,
+            ("Turbidity", "Hardness", "TDS", "SafeProbability"),
+        )
         self.assertIn("Alkalinity", FEATURE_COLUMNS)
         self.assertNotIn("Potability", FEATURE_COLUMNS)
         self.assertEqual(self.service.info()["regression_feature_columns"], list(REGRESSION_FEATURE_COLUMNS))

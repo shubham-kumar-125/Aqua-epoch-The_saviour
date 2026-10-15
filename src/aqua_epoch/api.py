@@ -18,7 +18,6 @@ from .config import (
     BIS_REFERENCE,
     CLASSIFICATION_FEATURE_COLUMNS,
     DISCLAIMER,
-    FEATURE_COLUMNS,
     MODELS_DIR,
     REGRESSION_FEATURE_COLUMNS,
     USER_INPUT_FEATURES,
@@ -75,15 +74,10 @@ class ModelService:
         cleaned, errors, warnings = validate_payload(payload, self.metadata["feature_ranges"])
         if errors:
             raise RequestValidationError(errors, warnings)
-        filled_features = dict(self.metadata["defaults"])
-        filled_features.update(cleaned)
-        defaulted_features = [feature for feature in FEATURE_COLUMNS if feature not in cleaned]
-        if defaulted_features:
-            warnings.append(
-                f"{len(defaulted_features)} unentered model inputs were filled with training-set median defaults."
-            )
-        chemistry_frame = pd.DataFrame([filled_features], columns=FEATURE_COLUMNS)
-        classification_frame = chemistry_frame.loc[:, CLASSIFICATION_FEATURE_COLUMNS]
+        classification_frame = pd.DataFrame(
+            [{feature: cleaned[feature] for feature in CLASSIFICATION_FEATURE_COLUMNS}],
+            columns=CLASSIFICATION_FEATURE_COLUMNS,
+        )
         probabilities = self.classifier.predict_proba(classification_frame)[0]
         classes = list(self.classifier.classes_)
         safe_probability = float(probabilities[classes.index(1)])
@@ -101,14 +95,25 @@ class ModelService:
                 f"{held_out_unsafe} unsafe samples as Safe (false-safe rate {false_safe_rate:.1%}); "
                 "do not use this prediction alone to determine water safety."
             )
-        regression_features = dict(filled_features)
-        regression_features["Potability"] = int(safe)
+        unused_metrics = [
+            feature for feature in cleaned if feature not in CLASSIFICATION_FEATURE_COLUMNS
+        ]
+        if unused_metrics:
+            warnings.append(
+                "The current three-input models do not use optional measurement(s): "
+                + ", ".join(unused_metrics)
+                + "."
+            )
+        regression_features = {
+            feature: cleaned[feature] for feature in CLASSIFICATION_FEATURE_COLUMNS
+        }
+        regression_features["SafeProbability"] = safe_probability
         regression_frame = pd.DataFrame([regression_features], columns=REGRESSION_FEATURE_COLUMNS)
         predicted_ph = float(self.regressor.predict(regression_frame)[0])
         regression = self.metadata["regression"]
         warnings.append(
-            "The pH model uses Potability as an input; this value comes from the classifier prediction, "
-            "not a laboratory label."
+            "The pH model uses the classifier's predicted Safe probability as an input; "
+            "it is not a laboratory measurement."
         )
         ph_prediction_caution = regression.get("signal_status") == "weak"
         if ph_prediction_caution:
@@ -151,11 +156,13 @@ class ModelService:
             "unsafe_probability": round(unsafe_probability, 6),
             "classification_threshold": threshold,
             "predicted_ph": round(predicted_ph, 4),
-            "ph_potability_input": "Safe" if safe else "Unsafe",
+            "ph_potability_input": "classifier Safe probability",
+            "ph_classifier_safe_probability": round(safe_probability, 6),
             "ph_prediction_caution": ph_prediction_caution,
             "ph_within_physical_range": 0 <= predicted_ph <= 14,
             "entered_metrics": cleaned,
-            "defaulted_features": defaulted_features,
+            "unused_metrics": unused_metrics,
+            "defaulted_features": [],
             "input_guidance": guidance,
             "warnings": warnings,
             "model_version": self.metadata["model_version"],

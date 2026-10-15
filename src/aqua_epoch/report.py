@@ -160,16 +160,16 @@ The prototype predicts a binary water-safety label (`Unsafe=0`, `Safe=1`) and es
 ## Data and preprocessing
 
 - Source CSV: `{dataset['filename']}` ({dataset['source_rows']:,} source rows, {dataset['columns']} columns).
-- {dataset['rows']:,} rows remain after basic cleaning; {quality['rows_removed_by_basic_cleaning']:,} rows were excluded by the stated physical/quality filters.
-- Task A has {quality['classification_labeled_rows']:,} labelled rows ({cm['test_rows']:,} held out). Its six features are Turbidity, Hardness, TDS, Fluoride, Nitrate, and Conductivity.
-- Task B has {quality['regression_labeled_rows']:,} usable pH targets ({rm['test_rows']:,} held out). It uses Hardness, Alkalinity, and Potability; the deployed API supplies the classifier's predicted Potability.
-- Task A uses a fixed-seed 77/23 hold-out split; Task B uses a separate 80/20 hold-out. The pH candidates are compared using five-fold cross-validation on the training partition; hold-outs are used only for final reporting. Imputation and scaling are fitted inside pipelines.
+- {dataset['rows']:,} unique source rows remain after exact-duplicate removal; {quality['rows_removed_by_basic_cleaning']:,} duplicate rows were removed. Task-specific physical-range checks are applied only to each task's target and three user-entered measurements.
+- Task A has {quality['classification_labeled_rows']:,} labelled rows ({cm['test_rows']:,} held out). Its inputs are the same three measurements collected by the website: Turbidity, Hardness, and TDS.
+- Task B has {quality['regression_labeled_rows']:,} usable pH targets ({rm['test_rows']:,} held out). It uses those three measurements and a cross-fitted Safe probability from Task A.
+- Both tasks use a fixed-seed 77/23 hold-out split. Task A candidates are selected by five-fold stratified ROC-AUC; pH candidates use five-fold MAE cross-validation on the training partition. Hold-outs are used only for final reporting. Imputation and scaling are fitted inside pipelines.
 - {quality['source_missing_ph_labels']:,} source pH labels are missing and {quality['pH_outside_0_14']:,} are outside the physical 0–14 interval. Missing chemistry values are imputed within the pipeline.
 - The source contains {quality['source_exact_duplicate_rows']:,} exact duplicate rows; {quality['retained_exact_duplicate_rows']:,} remain after basic cleaning. The cleaned TDS median is {metadata['defaults']['TDS']:,.0f} mg/L, versus BIS acceptable guidance of 500 mg/L, so the dataset's units and representativeness require verification.
 
 ## Models and held-out results
 
-Task A uses the 200-tree Random Forest from `main2.ipynb` with depth 12, `min_samples_split=10`, `min_samples_leaf=5`, and a 0.50 Safe-probability threshold. The reported confusion matrix uses rows as actual labels (`Unsafe`, `Safe`) and columns as predicted labels (`Unsafe`, `Safe`).
+Task A selects among three classifiers by training-only five-fold stratified ROC-AUC. The chosen `{classification['display_name']}` uses the same three measurements as the live form, with a 0.50 Safe-probability threshold. The reported confusion matrix uses rows as actual labels (`Unsafe`, `Safe`) and columns as predicted labels (`Unsafe`, `Safe`).
 
 | Classification metric | Held-out result |
 | --- | ---: |
@@ -183,7 +183,7 @@ Task A uses the 200-tree Random Forest from `main2.ipynb` with depth 12, `min_sa
 
 At this threshold the model marks {matrix[0][1]:,} of {sum(matrix[0]):,} held-out unsafe samples as Safe. This false-safe error is safety-critical; the model is not suitable for operational certification.
 
-Task B selects among seven regression pipelines from `main2.ipynb` using the lowest mean absolute error in five-fold cross-validation on the training partition. The selected model is `{regression['model']}`.
+Task B selects a regression pipeline using the lowest mean absolute error in five-fold cross-validation on the training partition. The selected model is `{regression['model']}`. Its training inputs include cross-fitted classifier probabilities rather than observed Potability labels, matching the value available at inference.
 
 | Regression metric | Held-out result |
 | --- | ---: |
@@ -192,11 +192,11 @@ Task B selects among seven regression pipelines from `main2.ipynb` using the low
 | R² | {rm['r2']:.4f} |
 | Training-mean baseline R² | {rm['training_mean_baseline_r2']:.4f} |
 
-The near-zero R² indicates weak explanatory/predictive signal for pH in this dataset. The held-out evaluation uses the observed Potability label, while the API has only the classifier's prediction; deployed pH performance may be worse. Cross-validation results are recorded in `artifacts/metadata.json`; MAE and RMSE should not be interpreted as evidence of reliable laboratory-level pH estimation.
+The near-zero R² indicates weak explanatory/predictive signal for pH using only the three measurements the website collects. Cross-validation results are recorded in `artifacts/metadata.json`; MAE and RMSE should not be interpreted as evidence of reliable laboratory-level pH estimation.
 
 ## Prototype input behavior
 
-The browser form requests Turbidity, Total Hardness, and TDS. The API fills omitted values among the six classifier features and Alkalinity with training-set medians and identifies those defaults in the response. API clients may provide Fluoride, Nitrate, Conductivity, and Alkalinity; Potability is generated by the classifier and cannot be overridden.
+The browser form requests Turbidity, Total Hardness, and TDS, and both deployed models use those three measurements. The pH model receives the classifier's Safe probability. API clients may provide optional chemistry fields for compatibility, but the current models ignore them and the response identifies those values as unused.
 
 ## Limitations and responsible use
 
@@ -268,22 +268,22 @@ def build_report(metadata: dict[str, Any] | None = None) -> Path:
         plt.close(fig)
 
         # 3 — dataset and methodology
-        fig, _ = _page("Data and evaluation design", "The reported hold-out results come from the supplied dataset after basic cleaning", 3)
+        fig, _ = _page("Data and evaluation design", "The reported hold-out results use the same three inputs as the live website", 3)
         _card(fig, 0.06, 0.60, 0.275, 0.18, "Source CSV rows", f"{dataset['source_rows']:,}", f"{dataset['columns']} columns")
-        _card(fig, 0.362, 0.60, 0.275, 0.18, "Rows retained", f"{dataset['rows']:,}", f"{quality['rows_removed_by_basic_cleaning']:,} excluded by filters", ORANGE)
+        _card(fig, 0.362, 0.60, 0.275, 0.18, "Unique rows", f"{dataset['rows']:,}", f"{quality['rows_removed_by_basic_cleaning']:,} exact duplicates removed", ORANGE)
         _card(fig, 0.664, 0.60, 0.275, 0.18, "Labelled examples", f"{quality['classification_labeled_rows']:,}", f"{cm['test_rows']:,} classification hold-out rows")
         _text_block(
             fig, 0.08, 0.49, "Task A | classification",
-            "Six chemistry features; 77/23 hold-out with seed 15; median imputation learned on training rows; notebook Random Forest; fixed 0.50 probability threshold.",
+            f"{classification['display_name']}; Turbidity, Hardness, and TDS; five-fold stratified model selection; 0.50 probability threshold.",
             width=57, body_size=10.2,
         )
         _text_block(
             fig, 0.53, 0.49, "Task B | pH regression",
-            f"Hardness, Alkalinity, and Potability; {quality['regression_labeled_rows']:,} usable pH targets; separate 80/20 hold-out; seven candidates selected by training-only five-fold MAE.",
+            f"Three measured inputs plus cross-fitted Safe probability; {quality['regression_labeled_rows']:,} usable pH targets; shared 77/23 hold-out; candidates selected by training-only five-fold MAE.",
             width=57, heading_color=ORANGE, body_size=10.2,
         )
         fig.text(0.08, 0.24, "CLEANING AND LEAKAGE CONTROLS", fontsize=8.5, color=MUTED, fontweight="bold")
-        fig.text(0.08, 0.195, f"{quality['pH_outside_0_14']:,} pH labels outside 0–14 excluded  |  imputation fitted inside each training pipeline  |  API uses classifier-predicted Potability", fontsize=10.2, color=INK)
+        fig.text(0.08, 0.195, f"{quality['pH_outside_0_14']:,} pH labels outside 0–14 excluded  |  imputation fitted inside training pipelines  |  pH uses classifier Safe probability", fontsize=10.2, color=INK)
         fig.text(0.08, 0.13, f"Class balance after cleaning: {quality['class_distribution']['0']:,} Unsafe and {quality['class_distribution']['1']:,} Safe labels.", fontsize=10, color=MUTED)
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
@@ -320,7 +320,7 @@ def build_report(metadata: dict[str, Any] | None = None) -> Path:
             fig.text(0.92, y, f"{item['importance']:.3f}", fontsize=11, color=TEAL, ha="right")
         _text_block(
             fig, 0.68, 0.29, "Deployment caveat",
-            "These held-out scores evaluate a six-feature model. The simplified browser form asks for only three measurements, so the API median-fills the other three classifier inputs as well as the remaining chemistry fields. That simplified prediction is not equivalent to the six-measurement evaluation.",
+            "The classifier is trained and evaluated on exactly the three measurements collected by the browser form, rather than relying on extra measurements filled with training-set medians.",
             width=42, heading_color=ORANGE, body_size=9.5,
         )
         pdf.savefig(fig, bbox_inches="tight")
@@ -347,7 +347,7 @@ def build_report(metadata: dict[str, Any] | None = None) -> Path:
         boxes = [
             (0.07, "01  INPUT", "Turbidity\nHardness\nTDS"),
             (0.30, "02  VALIDATE", "Finite numeric\nPhysical ranges\nBIS guidance"),
-            (0.53, "03  PREDICT", "Safety pipeline\npH pipeline\nShared defaults"),
+            (0.53, "03  PREDICT", "Safety pipeline\npH pipeline\nClassifier probability"),
             (0.76, "04  RESPOND", "Label + probability\npH estimate\nWarnings"),
         ]
         for x, heading, body in boxes:
@@ -358,16 +358,16 @@ def build_report(metadata: dict[str, Any] | None = None) -> Path:
         for x in (0.25, 0.48, 0.71):
             fig.text(x, 0.57, ">", fontsize=17, color=ORANGE, fontweight="bold")
         _text_block(
-            fig, 0.08, 0.39, "What the service fills",
-            "Seven measured inputs are supported. The three form values are entered directly; four other chemistry inputs are filled with training-set medians. The pH model receives Potability from the classifier; API clients cannot override it.",
+            fig, 0.08, 0.39, "What the service uses",
+            "Both models use the three form values directly. The pH model receives the classifier's predicted Safe probability; optional API chemistry fields are not consumed.",
             width=68, body_size=10.2,
         )
         _text_block(
             fig, 0.56, 0.39, "Transparency endpoints",
-            "GET /api/health checks readiness. GET /api/model-info exposes recorded metrics, feature ranges, and defaults. POST /api/predict returns both predictions, entered/defaulted fields, BIS guidance, and limitations.",
+            "GET /api/health checks readiness. GET /api/model-info exposes recorded metrics and feature ranges. POST /api/predict returns both predictions, entered/unused fields, BIS guidance, and limitations.",
             width=55, heading_color=ORANGE, body_size=10.2,
         )
-        fig.text(0.08, 0.14, "The pH validation used observed Potability; website inference uses the classifier's estimate, so its pH result may be less reliable.", fontsize=9.5, color=MUTED)
+        fig.text(0.08, 0.14, "The pH model uses classifier probabilities during both training and inference; its held-out signal remains weak.", fontsize=9.5, color=MUTED)
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
 

@@ -13,11 +13,9 @@ def validate_payload(
 ) -> tuple[dict[str, float], dict[str, str], list[str]]:
     """Return cleaned data, field errors, and non-blocking range warnings.
 
-    The public form requires three easy-to-measure metrics. A REST client may
-    additionally supply any of the remaining chemistry fields for a more
-    specific full-panel prediction; those values are validated here as well.
-    The caller fills only genuinely unentered model inputs with disclosed
-    defaults.
+    The public form requires three easy-to-measure metrics. REST clients may
+    additionally supply other chemistry fields; those values are validated
+    for compatibility, though the current deployed models do not consume them.
     """
     if not isinstance(payload, dict):
         return {}, {"body": "JSON object expected."}, []
