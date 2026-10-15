@@ -2,7 +2,12 @@ import unittest
 from pathlib import Path
 
 from aqua_epoch.api import ModelService, RequestValidationError
-from aqua_epoch.config import ARTIFACTS_DIR, FEATURE_COLUMNS, USER_INPUT_FEATURES
+from aqua_epoch.config import (
+    ARTIFACTS_DIR,
+    FEATURE_COLUMNS,
+    REGRESSION_FEATURE_COLUMNS,
+    USER_INPUT_FEATURES,
+)
 
 
 @unittest.skipUnless((ARTIFACTS_DIR / "metadata.json").is_file(), "run training before model-service smoke test")
@@ -15,11 +20,28 @@ class ModelServiceTests(unittest.TestCase):
         payload = {"Turbidity": 1, "Hardness": 180, "TDS": 450}
         result = self.service.predict(payload)
         self.assertIn(result["safety_code"], (0, 1))
+        self.assertEqual(
+            result["safety_prediction_caution"],
+            sum(self.service.metadata["classification"]["confusion_matrix"][0]) > 0
+            and self.service.metadata["classification"]["confusion_matrix"][0][1] > 0,
+        )
         self.assertGreaterEqual(result["safe_probability"], 0)
         self.assertLessEqual(result["safe_probability"], 1)
         self.assertIsInstance(result["predicted_ph"], float)
-        self.assertEqual(len(result["defaulted_features"]), 14)
+        self.assertEqual(
+            result["ph_prediction_caution"],
+            self.service.metadata["regression"]["signal_status"] == "weak",
+        )
+        if result["ph_prediction_caution"]:
+            self.assertTrue(any("weak held-out predictive signal" in warning for warning in result["warnings"]))
+        self.assertEqual(len(result["defaulted_features"]), 4)
+        self.assertEqual(
+            result["ph_potability_input"],
+            "Safe" if result["safety_code"] else "Unsafe",
+        )
         self.assertEqual(len(result["input_guidance"]), 3)
+        self.assertTrue(any("classifier prediction" in warning for warning in result["warnings"]))
+        self.assertTrue(any("outside the central 98%" in warning and "TDS" in warning for warning in result["warnings"]))
 
     def test_predict_rejects_incomplete_panel(self) -> None:
         payload = {"Turbidity": 1, "Hardness": 100}
@@ -35,6 +57,12 @@ class ModelServiceTests(unittest.TestCase):
         result = self.service.predict(payload)
         self.assertEqual(result["defaulted_features"], [])
         self.assertEqual(set(result["entered_metrics"]), set(FEATURE_COLUMNS))
+
+    def test_pH_regression_uses_notebook_features_and_classifier_output(self) -> None:
+        self.assertEqual(REGRESSION_FEATURE_COLUMNS, ("Hardness", "Alkalinity", "Potability"))
+        self.assertIn("Alkalinity", FEATURE_COLUMNS)
+        self.assertNotIn("Potability", FEATURE_COLUMNS)
+        self.assertEqual(self.service.info()["regression_feature_columns"], list(REGRESSION_FEATURE_COLUMNS))
 
 
 if __name__ == "__main__":

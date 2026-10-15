@@ -13,9 +13,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestClassifier
+from sklearn.decomposition import PCA
+from sklearn.ensemble import (
+    ExtraTreesRegressor,
+    GradientBoostingRegressor,
+    HistGradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
+)
 from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
+from sklearn.linear_model import Ridge
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
@@ -28,8 +36,9 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import KFold, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
 from .config import (
     ARTIFACTS_DIR,
@@ -39,7 +48,6 @@ from .config import (
     DOCS_DIR,
     FEATURE_COLUMNS,
     MODELS_DIR,
-    REGRESSION_DERIVED_FEATURE,
     REGRESSION_FEATURE_COLUMNS,
     REGRESSION_TARGET,
     source_data_candidates,
@@ -80,7 +88,7 @@ def _make_dirs() -> None:
 
 
 def _make_classifier() -> Pipeline:
-    """Task A model matched to the six chemistry inputs used by the API."""
+    """Task A Random Forest from main2.ipynb."""
     return Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="median")),
@@ -91,8 +99,7 @@ def _make_classifier() -> Pipeline:
                     max_depth=12,
                     min_samples_split=10,
                     min_samples_leaf=5,
-                    max_features=None,
-                    class_weight="balanced_subsample",
+                    max_features=1.0,
                     n_jobs=-1,
                     random_state=42,
                 ),
@@ -101,29 +108,92 @@ def _make_classifier() -> Pipeline:
     )
 
 
-def _make_regressor() -> Pipeline:
-    """Robust Task B model selected by validation MAE/RMSE.
-
-    Huber loss reduces the influence of the occasional noisy pH label while
-    shallow boosted trees capture the non-linear chemistry interactions without
-    memorising the training set.
-    """
-    return Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="median")),
-            (
-                "model",
-                GradientBoostingRegressor(
-                    n_estimators=250,
-                    learning_rate=0.025,
-                    max_depth=2,
-                    min_samples_leaf=30,
-                    loss="huber",
-                    random_state=42,
+def _make_regression_candidates() -> dict[str, Pipeline]:
+    """pH candidates from main2.ipynb, selected by training-fold MAE."""
+    return {
+        "Random Forest": Pipeline(
+            [
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
+                (
+                    "model",
+                    RandomForestRegressor(
+                        n_estimators=350,
+                        min_samples_leaf=2,
+                        max_features=1.0,
+                        random_state=45,
+                        n_jobs=-1,
+                    ),
                 ),
-            ),
-        ]
-    )
+            ]
+        ),
+        "Extra Trees": Pipeline(
+            [
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
+                (
+                    "model",
+                    ExtraTreesRegressor(
+                        n_estimators=350,
+                        min_samples_leaf=2,
+                        max_features=0.9,
+                        random_state=45,
+                        n_jobs=-1,
+                    ),
+                ),
+            ]
+        ),
+        "Gradient Boosting": Pipeline(
+            [
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
+                (
+                    "model",
+                    GradientBoostingRegressor(
+                        n_estimators=250,
+                        learning_rate=0.04,
+                        max_depth=2,
+                        loss="huber",
+                        random_state=45,
+                    ),
+                ),
+            ]
+        ),
+        "Histogram Gradient Boosting": Pipeline(
+            [
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
+                (
+                    "model",
+                    HistGradientBoostingRegressor(
+                        max_iter=250,
+                        learning_rate=0.06,
+                        l2_regularization=1,
+                        random_state=45,
+                    ),
+                ),
+            ]
+        ),
+        "Ridge": Pipeline(
+            [
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
+                ("scale", StandardScaler()),
+                ("model", Ridge(alpha=10.0)),
+            ]
+        ),
+        "Polynomial Ridge": Pipeline(
+            [
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
+                ("scale", StandardScaler()),
+                ("poly", PolynomialFeatures(degree=2, include_bias=False)),
+                ("model", Ridge(alpha=100.0)),
+            ]
+        ),
+        "PCA + Ridge": Pipeline(
+            [
+                ("imputer", SimpleImputer(strategy="median")),
+                ("scale", StandardScaler()),
+                ("pca", PCA(n_components=0.95)),
+                ("model", Ridge(alpha=10.0)),
+            ]
+        ),
+    }
 
 
 def _safe_probability(model: Pipeline, features: pd.DataFrame) -> np.ndarray:
@@ -132,36 +202,6 @@ def _safe_probability(model: Pipeline, features: pd.DataFrame) -> np.ndarray:
     if 1 not in classes:
         raise ValueError("The safety classifier was not fitted with class 1.")
     return model.predict_proba(features)[:, classes.index(1)]
-
-
-def _regression_frame(features: pd.DataFrame, safe_probability: np.ndarray) -> pd.DataFrame:
-    """Append only a classifier prediction, never the observed Potability label."""
-    frame = features.loc[:, FEATURE_COLUMNS].copy()
-    frame[REGRESSION_DERIVED_FEATURE] = safe_probability
-    return frame.loc[:, REGRESSION_FEATURE_COLUMNS]
-
-
-def _oof_safe_probabilities(
-    classification_features: pd.DataFrame,
-    labels: pd.Series,
-    seed: int,
-) -> tuple[np.ndarray, Pipeline]:
-    """Create out-of-fold safe probabilities so Task B cannot see true labels."""
-    probabilities = np.empty(len(classification_features), dtype=float)
-    folds = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
-    for train_positions, valid_positions in folds.split(classification_features, labels):
-        fold_model = _make_classifier()
-        fold_model.fit(
-            classification_features.iloc[train_positions],
-            labels.iloc[train_positions],
-        )
-        probabilities[valid_positions] = _safe_probability(
-            fold_model, classification_features.iloc[valid_positions]
-        )
-
-    fitted_model = _make_classifier()
-    fitted_model.fit(classification_features, labels)
-    return probabilities, fitted_model
 
 
 def _plot_confusion(matrix: np.ndarray) -> None:
@@ -219,12 +259,12 @@ def _plot_regression(y_true: pd.Series, y_pred: np.ndarray) -> None:
 
 
 def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
-    """Train the challenge's two leakage-aware predictive tasks."""
+    """Train both deployed models using the model definitions in main2.ipynb."""
     os.environ.setdefault("MPLCONFIGDIR", str(ARTIFACTS_DIR / ".matplotlib"))
     _make_dirs()
     dataset_path = _find_data_path(data_path)
     df = pd.read_csv(dataset_path)
-    required = set(FEATURE_COLUMNS) | {CLASSIFICATION_TARGET, REGRESSION_TARGET}
+    required = set(FEATURE_COLUMNS) | {CLASSIFICATION_TARGET, REGRESSION_TARGET, "Potassium"}
     missing_columns = sorted(required - set(df.columns))
     if missing_columns:
         raise ValueError("Dataset lacks required column(s): " + ", ".join(missing_columns))
@@ -233,6 +273,8 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
     source_rows = len(df)
+    source_exact_duplicate_rows = int(df.duplicated().sum())
+    source_missing_ph = int(df[REGRESSION_TARGET].isna().sum())
     source_ph_outside_range = int(((df[REGRESSION_TARGET] < 0) | (df[REGRESSION_TARGET] > 14)).sum())
     valid_rows = (
         (df[REGRESSION_TARGET].isna() | df[REGRESSION_TARGET].between(0, 14))
@@ -242,17 +284,17 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
         & (df["Nitrate"].isna() | (df["Nitrate"] <= 100))
         & (df["Potassium"].isna() | (df["Potassium"] <= 40))
     )
-    df = df.loc[valid_rows].copy()
+    df = df.loc[valid_rows].drop_duplicates().copy()
+    retained_exact_duplicate_rows = int(df.duplicated().sum())
 
     X_all = df.loc[:, FEATURE_COLUMNS]
     class_rows = df[CLASSIFICATION_TARGET].isin([0, 1])
-    pH_rows = df[REGRESSION_TARGET].notna()
-    regression_rows = class_rows & pH_rows
+    pH_rows = df[REGRESSION_TARGET].notna() & df[CLASSIFICATION_TARGET].isin([0, 1])
 
     X_class = df.loc[class_rows, CLASSIFICATION_FEATURE_COLUMNS]
     y_class = df.loc[class_rows, CLASSIFICATION_TARGET].astype(int)
     Xc_train, Xc_test, yc_train, yc_test = train_test_split(
-        X_class, y_class, test_size=0.23, random_state=seed, stratify=y_class
+        X_class, y_class, test_size=0.23, random_state=seed
     )
     classifier_evaluation = _make_classifier()
     print(f"Training classification model on {len(Xc_train):,} rows …")
@@ -271,50 +313,62 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
     }
     class_matrix = confusion_matrix(yc_test, class_predictions, labels=[0, 1])
 
-    # Task B retains only rows with measured pH and an available classification
-    # target. The observed target is used solely to create out-of-fold model
-    # probabilities, never as a pH-regression input.
-    regression_data = df.loc[regression_rows]
-    X_reg_base = regression_data.loc[:, FEATURE_COLUMNS]
-    X_reg_class = regression_data.loc[:, CLASSIFICATION_FEATURE_COLUMNS]
+    # The notebook's pH model uses Potability as a feature. At inference, the
+    # API supplies the classifier's predicted class for this model input.
+    regression_data = df.loc[pH_rows]
+    X_reg = regression_data.loc[:, REGRESSION_FEATURE_COLUMNS]
     y_reg = regression_data.loc[:, REGRESSION_TARGET]
-    y_reg_class = regression_data.loc[:, CLASSIFICATION_TARGET].astype(int)
-    Xr_train_base, Xr_test_base, Xr_train_class, Xr_test_class, yr_train, yr_test, yr_train_class, _ = train_test_split(
-        X_reg_base,
-        X_reg_class,
+    Xr_train, Xr_test, yr_train, yr_test = train_test_split(
+        X_reg,
         y_reg,
-        y_reg_class,
-        test_size=0.23,
-        random_state=seed,
-        stratify=y_reg_class,
+        test_size=0.20,
+        random_state=45,
     )
-    train_safe_probabilities, regression_classifier = _oof_safe_probabilities(
-        Xr_train_class.reset_index(drop=True), yr_train_class.reset_index(drop=True), seed
-    )
-    test_safe_probabilities = _safe_probability(regression_classifier, Xr_test_class)
-    Xr_train = _regression_frame(Xr_train_base, train_safe_probabilities)
-    Xr_test = _regression_frame(Xr_test_base, test_safe_probabilities)
 
-    print(f"Training full-chemistry pH regression model on {len(Xr_train):,} rows …")
-    regressor_evaluation = _make_regressor()
+    print(f"Selecting main2.ipynb pH model from {len(Xr_train):,} training rows …")
+    regression_candidates = _make_regression_candidates()
+    regression_cv = KFold(n_splits=5, shuffle=True, random_state=45)
+    regression_cv_results: dict[str, dict[str, object]] = {}
+    regression_mean_mae: dict[str, float] = {}
+    for candidate_name, candidate in regression_candidates.items():
+        fold_scores = cross_val_score(
+            candidate,
+            Xr_train,
+            yr_train,
+            cv=regression_cv,
+            scoring="neg_mean_absolute_error",
+            n_jobs=-1,
+        )
+        mean_mae = float(-fold_scores.mean())
+        regression_mean_mae[candidate_name] = mean_mae
+        regression_cv_results[candidate_name] = {
+            "mean_mae": mean_mae,
+            "std_mae": float(fold_scores.std()),
+            "fold_mae": (-fold_scores).tolist(),
+        }
+    regression_model_name = min(
+        regression_mean_mae,
+        key=lambda name: regression_mean_mae[name],
+    )
+    regressor_evaluation = regression_candidates[regression_model_name]
     regressor_evaluation.fit(Xr_train, yr_train)
-    reg_predictions = regressor_evaluation.predict(Xr_test)
+    reg_predictions = np.asarray(regressor_evaluation.predict(Xr_test), dtype=float)
+    baseline_prediction = np.full(len(yr_test), float(yr_train.mean()))
     reg_metrics = {
         "mae": mean_absolute_error(yr_test, reg_predictions),
         "rmse": float(np.sqrt(mean_squared_error(yr_test, reg_predictions))),
         "r2": r2_score(yr_test, reg_predictions),
+        "training_mean_baseline_r2": r2_score(yr_test, baseline_prediction),
         "test_rows": int(len(yr_test)),
     }
 
     # Refit persisted models on all labelled rows only after held-out evaluation.
     classifier = _make_classifier()
     classifier.fit(X_class, y_class)
-    full_regression_safe_probabilities, _ = _oof_safe_probabilities(
-        X_reg_class.reset_index(drop=True), y_reg_class.reset_index(drop=True), seed
-    )
-    full_regression_frame = _regression_frame(X_reg_base, full_regression_safe_probabilities)
-    regressor = _make_regressor()
-    regressor.fit(full_regression_frame, y_reg)
+    from sklearn.base import clone
+
+    regressor = clone(regressor_evaluation)
+    regressor.fit(X_reg, y_reg)
 
     class_model = classifier_evaluation.named_steps["model"]
     class_importance = _plot_importance(
@@ -358,7 +412,7 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
 
     metadata: dict[str, object] = {
         "project": "Aqua-Epoch Water Intelligence Platform",
-        "model_version": "3.1.0-validated-robust-ph",
+        "model_version": "4.0.0-main2",
         "trained_on": str(date.today()),
         "dataset": {
             "filename": dataset_path.name,
@@ -374,8 +428,10 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
         "data_quality": {
             "classification_labeled_rows": int(class_rows.sum()),
             "regression_labeled_rows": int(pH_rows.sum()),
-            "regression_rows_with_potability": int(regression_rows.sum()),
             "rows_removed_by_basic_cleaning": int(source_rows - len(df)),
+            "source_missing_ph_labels": source_missing_ph,
+            "source_exact_duplicate_rows": source_exact_duplicate_rows,
+            "retained_exact_duplicate_rows": retained_exact_duplicate_rows,
             "missing_by_feature": missingness,
             "class_distribution": {str(key): int(value) for key, value in y_class.value_counts().sort_index().items()},
             "pH_outside_0_14": source_ph_outside_range,
@@ -383,27 +439,29 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
         "classification": {
             "target": CLASSIFICATION_TARGET,
             "meaning": {"0": "Unsafe", "1": "Safe"},
-            "model": "RandomForestClassifier (200 trees, max depth 12) with median imputation and balanced-subset weights",
-            "selection": (
-                "Retained after validation against full-panel Random Forest, Extra Trees, "
-                "HistGradientBoosting, LightGBM and XGBoost candidates: it delivered the "
-                "strongest dependable safe-class F1/balanced accuracy while using the compact "
-                "six-feature panel supported by the deployed form."
-            ),
+            "display_name": "Random Forest",
+            "model": "RandomForestClassifier (200 trees, max depth 12, min_samples_split 10, min_samples_leaf 5)",
+            "selection": "Fixed Random Forest from main2.ipynb using the six-feature input schema.",
             "metrics": class_metrics,
             "confusion_matrix": class_matrix.tolist(),
             "feature_importance": class_importance,
         },
         "regression": {
             "target": REGRESSION_TARGET,
-            "model": "GradientBoostingRegressor (Huber loss, 250 shallow trees) with median imputation, 17 chemical features, and out-of-fold predicted safety probability",
+            "model": regression_model_name,
+            "display_name": regression_model_name,
+            "features": list(REGRESSION_FEATURE_COLUMNS),
             "selection": (
-                "Selected by three-fold validation on the training partition after comparing "
-                "HistGradientBoosting, Random Forest, Extra Trees, LightGBM and XGBoost. "
-                "Huber gradient boosting had the lowest validation MAE/RMSE among the reliable candidates."
+                "Selected by the lowest mean MAE in five-fold cross-validation on the training "
+                "partition, comparing the seven regression pipelines in main2.ipynb. The held-out "
+                "test partition was not used for selection."
             ),
+            "cross_validation": regression_cv_results,
+            "weak_signal_r2_threshold": 0.10,
+            "signal_status": "weak" if reg_metrics["r2"] < 0.10 else "measurable",
             "metrics": reg_metrics,
             "feature_importance": reg_importance,
+            "potability_input": "Predicted by the classification model at inference time.",
         },
     }
     metadata = _json_ready(metadata)

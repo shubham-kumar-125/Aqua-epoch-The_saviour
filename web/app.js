@@ -95,8 +95,15 @@ function displayResult(result) {
   card.classList.toggle('unsafe', !safe);
   document.querySelector('#safety-label').textContent = result.safety_label;
   document.querySelector('#safe-probability').textContent = `${(result.safe_probability * 100).toFixed(1)}%`;
+  document.querySelector('#safety-note').textContent = result.safety_prediction_caution
+    ? 'held-out false-safe errors — not a safety guarantee'
+    : 'model probability of safe (1)';
   document.querySelector('#ph-value').textContent = result.predicted_ph.toFixed(2);
-  document.querySelector('#ph-note').textContent = result.ph_within_physical_range ? 'continuous regression estimate' : 'outside physical pH range — verify reading';
+  document.querySelector('#ph-note').textContent = result.ph_prediction_caution
+    ? `weak validation signal · uses predicted Potability (${result.ph_potability_input})`
+    : result.ph_within_physical_range
+      ? `experimental estimate · uses predicted Potability (${result.ph_potability_input})`
+      : 'outside physical pH range — verify reading';
   document.querySelector('#disclaimer').textContent = result.disclaimer;
   displayGuidance(result.input_guidance);
   showWarnings(result.warnings);
@@ -113,8 +120,10 @@ async function initialize() {
     version.textContent = `Model v${modelInfo.model_version}`;
     const cm = modelInfo.classification.metrics;
     const rm = modelInfo.regression.metrics;
-    document.querySelector('#class-metrics').textContent = `Random Forest · ROC-AUC ${cm.roc_auc.toFixed(3)} · safe-class F1 ${cm.f1_safe.toFixed(3)}`;
-    document.querySelector('#reg-metrics').textContent = `Random Forest · MAE ${rm.mae.toFixed(3)} · RMSE ${rm.rmse.toFixed(3)} · R² ${rm.r2.toFixed(3)}`;
+    const classifierName = modelInfo.classification.display_name || 'Random Forest';
+    const regressionName = modelInfo.regression.display_name || modelInfo.regression.model;
+    document.querySelector('#class-metrics').textContent = `${classifierName} · ROC-AUC ${cm.roc_auc.toFixed(3)} · safe-class F1 ${cm.f1_safe.toFixed(3)}`;
+    document.querySelector('#reg-metrics').textContent = `${regressionName} · MAE ${rm.mae.toFixed(3)} · RMSE ${rm.rmse.toFixed(3)} · R² ${rm.r2.toFixed(3)} (${modelInfo.regression.signal_status} signal)`;
   } catch (error) {
     connection.textContent = 'Unable to load model service. Train models and start the server.';
     connectionDot.classList.add('error');

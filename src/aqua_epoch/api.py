@@ -20,7 +20,6 @@ from .config import (
     DISCLAIMER,
     FEATURE_COLUMNS,
     MODELS_DIR,
-    REGRESSION_DERIVED_FEATURE,
     REGRESSION_FEATURE_COLUMNS,
     USER_INPUT_FEATURES,
     USER_INPUT_SPECS,
@@ -81,8 +80,7 @@ class ModelService:
         defaulted_features = [feature for feature in FEATURE_COLUMNS if feature not in cleaned]
         if defaulted_features:
             warnings.append(
-                f"{len(defaulted_features)} unentered laboratory metrics were filled with training-set median defaults. "
-                "The pH model uses the full chemical panel, so a complete laboratory panel gives the most specific prediction."
+                f"{len(defaulted_features)} unentered model inputs were filled with training-set median defaults."
             )
         chemistry_frame = pd.DataFrame([filled_features], columns=FEATURE_COLUMNS)
         classification_frame = chemistry_frame.loc[:, CLASSIFICATION_FEATURE_COLUMNS]
@@ -92,10 +90,33 @@ class ModelService:
         unsafe_probability = float(probabilities[classes.index(0)])
         threshold = float(self.metadata["classification"]["metrics"]["threshold"])
         safe = safe_probability >= threshold
-        regression_frame = chemistry_frame.copy()
-        regression_frame[REGRESSION_DERIVED_FEATURE] = safe_probability
-        regression_frame = regression_frame.loc[:, REGRESSION_FEATURE_COLUMNS]
+        confusion = self.metadata["classification"]["confusion_matrix"]
+        held_out_unsafe = sum(confusion[0])
+        held_out_false_safe = confusion[0][1]
+        safety_prediction_caution = held_out_unsafe > 0 and held_out_false_safe > 0
+        if safety_prediction_caution:
+            false_safe_rate = held_out_false_safe / held_out_unsafe
+            warnings.append(
+                f"On held-out evaluation, the safety model marked {held_out_false_safe} of "
+                f"{held_out_unsafe} unsafe samples as Safe (false-safe rate {false_safe_rate:.1%}); "
+                "do not use this prediction alone to determine water safety."
+            )
+        regression_features = dict(filled_features)
+        regression_features["Potability"] = int(safe)
+        regression_frame = pd.DataFrame([regression_features], columns=REGRESSION_FEATURE_COLUMNS)
         predicted_ph = float(self.regressor.predict(regression_frame)[0])
+        regression = self.metadata["regression"]
+        warnings.append(
+            "The pH model uses Potability as an input; this value comes from the classifier prediction, "
+            "not a laboratory label."
+        )
+        ph_prediction_caution = regression.get("signal_status") == "weak"
+        if ph_prediction_caution:
+            r2 = float(regression["metrics"]["r2"])
+            warnings.append(
+                f"The pH model has weak held-out predictive signal (R² {r2:.3f}); "
+                "treat this as an experimental estimate and verify pH with laboratory testing."
+            )
         if not 0 <= predicted_ph <= 14:
             warnings.append(
                 "The predicted pH lies outside the physical 0–14 interval; verify the reading with laboratory testing."
@@ -125,10 +146,13 @@ class ModelService:
         return {
             "safety_label": "Safe" if safe else "Unsafe",
             "safety_code": 1 if safe else 0,
+            "safety_prediction_caution": safety_prediction_caution,
             "safe_probability": round(safe_probability, 6),
             "unsafe_probability": round(unsafe_probability, 6),
             "classification_threshold": threshold,
             "predicted_ph": round(predicted_ph, 4),
+            "ph_potability_input": "Safe" if safe else "Unsafe",
+            "ph_prediction_caution": ph_prediction_caution,
             "ph_within_physical_range": 0 <= predicted_ph <= 14,
             "entered_metrics": cleaned,
             "defaulted_features": defaulted_features,

@@ -50,11 +50,11 @@ def validate_payload(
 
         cleaned[feature] = value
         range_info = feature_ranges.get(feature, {})
-        lower = range_info.get("min")
-        upper = range_info.get("max")
+        lower = range_info.get("p01", range_info.get("min"))
+        upper = range_info.get("p99", range_info.get("max"))
         if lower is not None and upper is not None and (value < lower or value > upper):
             warnings.append(
-                f"{feature} is outside the model's observed training range "
+                f"{feature} is outside the central 98% of the model's training distribution "
                 f"({lower:.3g}–{upper:.3g}); interpret this extrapolation carefully."
             )
 
@@ -90,11 +90,11 @@ def validate_payload(
             )
             continue
         cleaned[feature] = value
-        lower = range_info.get("min")
-        upper = range_info.get("max")
+        lower = range_info.get("p01", range_info.get("min"))
+        upper = range_info.get("p99", range_info.get("max"))
         if lower is not None and upper is not None and (value < lower or value > upper):
             warnings.append(
-                f"{feature} is outside the model's observed training range "
+                f"{feature} is outside the central 98% of the model's training distribution "
                 f"({lower:.3g}–{upper:.3g}); interpret this extrapolation carefully."
             )
 

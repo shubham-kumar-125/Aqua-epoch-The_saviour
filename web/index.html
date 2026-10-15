@@ -3,37 +3,66 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#073b4c" />
-    <title>Aqua-Epoch | Water Intelligence</title>
+    <meta name="theme-color" content="#edf7f6" />
+    <meta name="description" content="Aqua-Epoch water quality screening and experimental pH insights." />
+    <title>Aqua-Epoch | Water Quality Field Lab</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
       <header class="hero">
         <nav class="topbar" aria-label="Application header">
-          <div class="brand"><span class="brand-mark">◉</span><span>AQUA<span>·</span>EPOCH</span></div>
-          <div class="topbar-meta"><span class="live-indicator"><i></i> MODEL ONLINE</span><span>techFEST'26 / SLIET</span></div>
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32" focusable="false"><path d="M16 3.5C12 9 7.5 13.3 7.5 19a8.5 8.5 0 0 0 17 0C24.5 13.3 20 9 16 3.5Z" fill="currentColor"/><path d="M11.5 20.5c.6 2.2 2.2 3.4 4.5 3.8" fill="none" stroke="#effcf8" stroke-linecap="round" stroke-width="1.8"/></svg>
+            </span>
+            <span>AQUA<span>·</span>EPOCH</span>
+          </div>
+          <div class="topbar-meta"><span class="live-indicator"><i></i> FIELD LAB ONLINE</span><span>techFEST'26 / SLIET</span></div>
         </nav>
         <div class="hero-grid">
           <div class="hero-copy">
-            <div class="eyebrow">WATER QUALITY INTELLIGENCE SYSTEM</div>
-            <h1>Read the water.<br /><em>Reveal the signal.</em></h1>
-            <p class="lede">A live prediction console that turns three core water measurements into a safety probability and pH estimate.</p>
+            <div class="eyebrow"><span class="eyebrow-mark"></span> WATER QUALITY / FIELD ANALYSIS</div>
+            <h1>Every drop<br />has a <em>story.</em></h1>
+            <p class="lede">A clear first look at your water. Explore a potability signal and an experimental pH estimate from a few simple measurements.</p>
             <div class="hero-stats" aria-label="System capabilities">
-              <div><strong>03</strong><span>field metrics</span></div>
-              <div><strong>02</strong><span>ML predictions</span></div>
-              <div><strong>LIVE</strong><span>REST inference</span></div>
+              <div><strong>03</strong><span>water readings</span></div>
+              <div><strong>02</strong><span>model insights</span></div>
+              <div><strong>01</strong><span>careful next step</span></div>
             </div>
           </div>
           <div class="aqua-visual" aria-hidden="true">
-            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
-            <div class="water-core"><span>H₂O</span><small>ANALYSE</small></div>
-            <div class="float-tag tag-one">TURBIDITY</div>
-            <div class="float-tag tag-two">TDS</div>
-            <div class="float-tag tag-three">HARDNESS</div>
+            <div class="water-art">
+              <svg viewBox="0 0 360 330" role="presentation">
+                <defs>
+                  <linearGradient id="drop-fill" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0" stop-color="#d5f5e9"/>
+                    <stop offset=".55" stop-color="#69cbbd"/>
+                    <stop offset="1" stop-color="#218c91"/>
+                  </linearGradient>
+                  <radialGradient id="drop-glow">
+                    <stop offset="0" stop-color="#a7eee0" stop-opacity=".5"/>
+                    <stop offset="1" stop-color="#a7eee0" stop-opacity="0"/>
+                  </radialGradient>
+                </defs>
+                <circle cx="182" cy="156" r="132" fill="url(#drop-glow)"/>
+                <circle cx="182" cy="156" r="121" fill="none" stroke="#b5eee1" stroke-opacity=".26"/>
+                <circle cx="182" cy="156" r="99" fill="none" stroke="#b5eee1" stroke-opacity=".34" stroke-dasharray="2 8"/>
+                <path d="M182 53c-22 33-58 66-58 103a58 58 0 0 0 116 0c0-37-36-70-58-103Z" fill="url(#drop-fill)"/>
+                <path d="M148 155c4-14 14-26 25-40m-17 74c3 12 12 21 25 25" fill="none" stroke="#f4fff9" stroke-linecap="round" stroke-opacity=".7" stroke-width="5"/>
+                <path d="M100 218c21 11 47 17 82 17s61-6 82-17M78 241c27 15 62 23 104 23s77-8 104-23" fill="none" stroke="#8edbd0" stroke-linecap="round" stroke-opacity=".62" stroke-width="2"/>
+                <circle cx="85" cy="111" r="4" fill="#e5fffa"/>
+                <circle cx="273" cy="89" r="3" fill="#e5fffa"/>
+                <circle cx="269" cy="202" r="5" fill="#b6f0e3"/>
+              </svg>
+            </div>
+            <div class="water-core"><span>H₂O</span><small>FIELD NOTES</small></div>
+            <div class="float-tag tag-one"><i></i> TURBIDITY</div>
+            <div class="float-tag tag-two"><i></i> DISSOLVED SOLIDS</div>
+            <div class="float-tag tag-three"><i></i> HARDNESS</div>
           </div>
         </div>
-        <div class="hero-note"><span>NOTICE</span> Decision-support prototype — verify all conclusions through accredited laboratory testing.</div>
+        <div class="hero-note"><span class="notice-icon" aria-hidden="true">!</span><span><b>A note on safety</b> This screening tool is for exploration only. Confirm water quality with an accredited laboratory.</span></div>
       </header>
 
       <section class="status-row" aria-live="polite">
@@ -46,39 +75,39 @@
         <form id="prediction-form" class="control-panel" novalidate>
           <div class="form-heading">
             <div>
-              <p class="eyebrow">01 / INPUT CONSOLE</p>
-              <h2>Sample scan</h2>
+              <p class="eyebrow"><span class="section-number">01</span> / YOUR SAMPLE</p>
+              <h2>Start with a few readings</h2>
             </div>
-            <button id="load-sample" type="button" class="quiet-button"><span>↻</span> Load demo sample</button>
+            <button id="load-sample" type="button" class="quiet-button"><span aria-hidden="true">↻</span> Try a sample</button>
           </div>
-          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance; the remaining metrics are transparently completed with training-median defaults.</p>
+          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance; four additional model inputs use training-median defaults, and the pH model receives the classifier's predicted Potability label.</p>
           <div id="form-error" class="form-error" hidden></div>
           <div id="feature-fields" class="fields"></div>
-          <div class="panel-footer"><span><i class="shield">◈</i> Physical-range validation enabled</span><span>3 inputs · 14 disclosed defaults</span></div>
-          <button id="submit-button" type="submit" class="predict-button"><span>Initiate analysis</span> <b>→</b></button>
+          <div class="panel-footer"><span><i class="shield">◈</i> Values checked before analysis</span><span>3 readings <i class="footer-separator"></i> 4 disclosed defaults</span></div>
+          <button id="submit-button" type="submit" class="predict-button"><span>Explore water insights</span> <b aria-hidden="true">→</b></button>
         </form>
 
         <aside id="result-panel" class="result-panel" aria-live="polite">
           <div class="result-empty" id="empty-state">
             <div class="droplet">◒</div>
             <h2>Awaiting a sample</h2>
-            <p>Validated predictions for water safety and pH will appear here.</p>
+            <p>Validated inputs, a water-safety estimate, and an experimental pH output will appear here.</p>
           </div>
           <div id="result-content" hidden>
-            <div class="result-heading"><p class="eyebrow">02 / PREDICTION OUTPUT</p><span class="pulse">LIVE</span></div>
+            <div class="result-heading"><p class="eyebrow"><span class="section-number">02</span> / YOUR RESULTS</p><span class="pulse">READY</span></div>
             <div id="safety-card" class="safety-card">
               <span class="card-label">Potability signal</span>
               <span id="safety-label">—</span>
               <strong id="safe-probability">—</strong>
-              <small>model probability of safe (1)</small>
+              <small id="safety-note">model probability of safe (1)</small>
             </div>
             <div class="ph-card">
-              <span>Estimated pH <i>continuous model output</i></span>
+              <span>Experimental pH estimate <i>not a laboratory result</i></span>
               <strong id="ph-value">—</strong>
-              <small id="ph-note">continuous regression estimate</small>
+              <small id="ph-note">experimental estimate using predicted Potability</small>
             </div>
             <div class="guidance-section">
-              <div class="guidance-title"><span>BIS input guidance</span><small>Input-level reference only</small></div>
+              <div class="guidance-title"><span>BIS reference points</span><small>For entered measurements</small></div>
               <div id="guidance-grid" class="guidance-grid"></div>
             </div>
             <div id="warnings" class="warnings" hidden></div>
@@ -88,7 +117,7 @@
       </section>
 
       <section class="method">
-        <p class="eyebrow">MODEL TELEMETRY</p>
+        <p class="eyebrow"><span class="section-number">03</span> / BEHIND THE RESULTS</p>
         <div class="method-grid">
           <p><strong><i>◉</i> Task A / Classification</strong><span id="class-metrics">Loading evaluation metrics…</span></p>
           <p><strong><i>◌</i> Task B / Regression</strong><span id="reg-metrics">Loading evaluation metrics…</span></p>
