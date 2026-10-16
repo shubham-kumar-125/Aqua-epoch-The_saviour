@@ -92,16 +92,12 @@ function displayResult(result) {
   document.querySelector('#result-content').hidden = false;
   const card = document.querySelector('#safety-card');
   const unsafe = result.safety_code === 0;
-  const inconclusive = result.safety_code === null;
   card.classList.toggle('unsafe', unsafe);
-  card.classList.toggle('inconclusive', inconclusive);
   document.querySelector('#safety-label').textContent = result.safety_label;
   document.querySelector('#safe-probability').textContent = `${(result.safe_probability * 100).toFixed(1)}%`;
-  document.querySelector('#safety-note').textContent = inconclusive
-    ? 'ambiguous model signal — confirm with a laboratory'
-    : result.safety_prediction_caution
-      ? 'held-out false-safe errors — not a safety guarantee'
-      : 'model probability of safe (1)';
+  document.querySelector('#safety-note').textContent = result.safety_prediction_caution
+    ? 'binary model estimate at 50% threshold — not a safety guarantee'
+    : 'binary model estimate at 50% threshold';
   document.querySelector('#ph-value').textContent = result.predicted_ph.toFixed(2);
   document.querySelector('#ph-note').textContent = result.ph_prediction_caution
     ? `weak validation · held-out MAE ${modelInfo.regression.metrics.mae.toFixed(2)} pH`

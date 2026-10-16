@@ -98,7 +98,8 @@ class ModelService:
             warnings.append(
                 "The website collects only Turbidity, Hardness, and TDS. Training-set "
                 f"medians were used for missing model inputs: {default_summary}. "
-                "These predictions may be less reliable than results with measured values."
+                "The binary classification is a model estimate based on substituted values "
+                "and may be less reliable than a result using measured values."
             )
         classification_frame = pd.DataFrame(
             [model_inputs],
@@ -118,27 +119,14 @@ class ModelService:
         )
         lower_threshold = float(uncertainty_policy["lower_safe_probability"])
         upper_threshold = float(uncertainty_policy["upper_safe_probability"])
-        if defaulted_features:
-            safety_label = "Inconclusive"
-            safety_code: int | None = None
+        safety_code = int(safe_probability >= threshold)
+        safety_label = "Safe" if safety_code == 1 else "Unsafe"
+        if lower_threshold < safe_probability < upper_threshold:
             warnings.append(
-                "A Safe/Unsafe label requires all six model measurements. Because one or more "
-                "were replaced with training medians, this three-measurement screening result "
-                "is inconclusive; confirm with laboratory testing."
-            )
-        elif safe_probability <= lower_threshold:
-            safety_label = "Unsafe"
-            safety_code: int | None = 0
-        elif safe_probability >= upper_threshold:
-            safety_label = "Safe"
-            safety_code = 1
-        else:
-            safety_label = "Inconclusive"
-            safety_code = None
-            warnings.append(
-                f"The model's Safe probability ({safe_probability:.1%}) is between "
-                f"{lower_threshold:.0%} and {upper_threshold:.0%}; with only the three "
-                "website readings, the result is inconclusive. Confirm with laboratory testing."
+                f"The model's Safe probability ({safe_probability:.1%}) is within its "
+                f"{lower_threshold:.0%}–{upper_threshold:.0%} uncertainty band, but the "
+                f"displayed binary estimate uses the configured {threshold:.0%} threshold. "
+                "Treat the estimate cautiously and confirm with laboratory testing."
             )
         confusion = self.metadata["classification"]["confusion_matrix"]
         held_out_unsafe = sum(confusion[0])

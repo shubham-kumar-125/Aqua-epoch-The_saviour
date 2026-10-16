@@ -169,7 +169,7 @@ The prototype predicts a binary water-safety label (`Unsafe=0`, `Safe=1`) and es
 
 ## Models and held-out results
 
-Task A restores the Aqua-Epoch `{classification['display_name']}` trained on all six model features. The hold-out metrics below simulate the live form by replacing unentered Fluoride, Nitrate, and Conductivity with medians calculated from the training partition. Full-measurement cross-validation results are recorded separately and should not be interpreted as the website's expected score. The hold-out metrics use a 0.50 Safe-probability threshold; the live service only reports a determinate label at or below the conservative Unsafe cutoff or at or above the Safe cutoff.
+Task A restores the Aqua-Epoch `{classification['display_name']}` trained on all six model features. The hold-out metrics below simulate the live form by replacing unentered Fluoride, Nitrate, and Conductivity with medians calculated from the training partition. Full-measurement cross-validation results are recorded separately and should not be interpreted as the website's expected score. The live service always reports the binary estimate using the configured 0.50 Safe-probability threshold, and adds a caution for probabilities in the uncertainty band or for median-filled model inputs.
 
 For comparison, when all six hold-out measurements are supplied, accuracy is {classification['full_feature_metrics']['accuracy']:.4f} and ROC-AUC is {classification['full_feature_metrics']['roc_auc']:.4f}. The live website does not collect all six measurements.
 
@@ -185,7 +185,7 @@ For comparison, when all six hold-out measurements are supplied, accuracy is {cl
 
 At this threshold the model marks {matrix[0][1]:,} of {sum(matrix[0]):,} held-out unsafe samples as Safe. This false-safe error is safety-critical; the model is not suitable for operational certification.
 
-The live service reports **Inconclusive** whenever any of the six model features is median-filled, as well as when complete-panel Safe probability falls between {classification['uncertainty_policy']['lower_safe_probability']:.0%} and {classification['uncertainty_policy']['upper_safe_probability']:.0%}. On out-of-fold predictions with all six features measured, the policy resolved {classification['uncertainty_policy']['coverage']:.1%} of rows with {classification['uncertainty_policy']['resolved_accuracy']:.1%} accuracy. These are internal validation results, not a guarantee for new water sources.
+As a separate analysis, an uncertainty-band policy using Safe-probability cutoffs of {classification['uncertainty_policy']['lower_safe_probability']:.0%} and {classification['uncertainty_policy']['upper_safe_probability']:.0%} would resolve {classification['uncertainty_policy']['coverage']:.1%} of out-of-fold rows with all six features measured at {classification['uncertainty_policy']['resolved_accuracy']:.1%} accuracy. The live service instead displays the 0.50-threshold binary estimate and warns when the probability lies in this band. These are internal validation results, not a guarantee for new water sources.
 
 Task B restores the Aqua-Epoch `{regression['model']}` trained on the same six features. The held-out metrics simulate the website's median-filled chemistry inputs. The near-zero R² indicates weak explanatory/predictive signal for pH; missing chemistry defaults cannot be treated as laboratory measurements.
 
@@ -202,7 +202,7 @@ The near-zero R² indicates weak explanatory/predictive signal for pH. Cross-val
 
 ## Prototype input behavior
 
-The browser form requests Turbidity, Total Hardness, and TDS. Both deployed models also require Fluoride, Nitrate, and Conductivity; the API fills unentered features from the training medians and identifies them in the response. API clients can submit measured values for those fields. Alkalinity is accepted for compatibility but is not a model input.
+The browser form requests Turbidity, Total Hardness, and TDS. Both deployed models also require Fluoride, Nitrate, and Conductivity; the API fills unentered features from the training medians and identifies them in the response. It returns a binary Safe/Unsafe estimate using the configured 0.50 probability threshold, with warnings when inputs are median-filled or the score falls in the uncertainty band. API clients can submit measured values for those fields. Alkalinity is accepted for compatibility but is not a model input.
 
 ## Limitations and responsible use
 

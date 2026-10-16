@@ -80,7 +80,7 @@
             </div>
             <button id="load-sample" type="button" class="quiet-button"><span aria-hidden="true">↻</span> Try a sample</button>
           </div>
-          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance. The six-feature Aqua-Epoch models fill Fluoride, Nitrate, and Conductivity with training-set medians. Since these are not measured, the safety label remains Inconclusive; confirm with an accredited laboratory.</p>
+          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance. The six-feature Aqua-Epoch models fill Fluoride, Nitrate, and Conductivity with training-set medians, then show a Safe/Unsafe estimate at a 50% probability threshold. Median-filled inputs may reduce reliability; confirm water safety with an accredited laboratory.</p>
           <div id="form-error" class="form-error" hidden></div>
           <div id="feature-fields" class="fields"></div>
           <div class="panel-footer"><span><i class="shield">◈</i> Values checked before analysis</span><span>3 readings <i class="footer-separator"></i> 6 model features</span></div>
@@ -96,10 +96,10 @@
           <div id="result-content" hidden>
             <div class="result-heading"><p class="eyebrow"><span class="section-number">02</span> / YOUR RESULTS</p><span class="pulse">READY</span></div>
             <div id="safety-card" class="safety-card">
-              <span class="card-label">Potability signal</span>
+              <span class="card-label">Potability model estimate · 50% threshold</span>
               <span id="safety-label">—</span>
               <strong id="safe-probability">—</strong>
-              <small id="safety-note">model probability of safe (1)</small>
+              <small id="safety-note">binary model estimate; not a safety guarantee</small>
             </div>
             <div class="ph-card">
               <span>Experimental pH estimate <i>weak validation — not a reliable result</i></span>

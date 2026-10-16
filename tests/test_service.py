@@ -19,7 +19,11 @@ class ModelServiceTests(unittest.TestCase):
     def test_predict_returns_both_tasks(self) -> None:
         payload = {"Turbidity": 1, "Hardness": 180, "TDS": 450}
         result = self.service.predict(payload)
-        self.assertIn(result["safety_code"], (0, 1, None))
+        self.assertIn(result["safety_code"], (0, 1))
+        self.assertEqual(
+            result["safety_code"],
+            int(result["safe_probability"] >= result["classification_threshold"]),
+        )
         self.assertEqual(
             result["safety_prediction_caution"],
             sum(self.service.metadata["classification"]["confusion_matrix"][0]) > 0
@@ -47,12 +51,12 @@ class ModelServiceTests(unittest.TestCase):
         result = self.service.predict(
             {"Turbidity": 2.86, "Hardness": 212.12, "TDS": 15569.18}
         )
-        self.assertEqual(result["safety_label"], "Inconclusive")
-        self.assertIsNone(result["safety_code"])
+        self.assertEqual(result["safety_label"], "Safe")
+        self.assertEqual(result["safety_code"], 1)
         self.assertEqual(set(result["defaulted_features"]), {"Fluoride", "Nitrate", "Conductivity"})
         self.assertEqual(result["safety_uncertainty_band"], [0.3, 0.7])
         self.assertTrue(
-            any("requires all six model measurements" in warning for warning in result["warnings"])
+            any("binary classification is a model estimate" in warning for warning in result["warnings"])
         )
         self.assertTrue(result["ph_prediction_caution"])
 
