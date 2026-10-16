@@ -34,22 +34,25 @@ class ModelServiceTests(unittest.TestCase):
         )
         if result["ph_prediction_caution"]:
             self.assertTrue(any("weak held-out predictive signal" in warning for warning in result["warnings"]))
-        self.assertEqual(result["defaulted_features"], [])
-        self.assertEqual(result["ph_potability_input"], "classifier Safe probability")
-        self.assertEqual(result["ph_classifier_safe_probability"], result["safe_probability"])
+        expected_defaulted = set(self.service.info()["model_feature_columns"]) - set(USER_INPUT_FEATURES)
+        self.assertEqual(set(result["defaulted_features"]), expected_defaulted)
+        for feature in expected_defaulted:
+            self.assertEqual(result["model_inputs"][feature], self.service.metadata["defaults"][feature])
+        self.assertEqual(result["ph_input_features"], list(REGRESSION_FEATURE_COLUMNS))
+        self.assertTrue(any("Training-set medians were used" in warning for warning in result["warnings"]))
         self.assertEqual(len(result["input_guidance"]), 3)
-        self.assertTrue(any("classifier's predicted Safe probability" in warning for warning in result["warnings"]))
         self.assertTrue(any("outside the central 98%" in warning and "TDS" in warning for warning in result["warnings"]))
 
-    def test_ambiguous_three_input_safety_result_is_inconclusive(self) -> None:
+    def test_screenshot_input_uses_training_medians_for_unentered_model_features(self) -> None:
         result = self.service.predict(
             {"Turbidity": 2.86, "Hardness": 212.12, "TDS": 15569.18}
         )
         self.assertEqual(result["safety_label"], "Inconclusive")
         self.assertIsNone(result["safety_code"])
+        self.assertEqual(set(result["defaulted_features"]), {"Fluoride", "Nitrate", "Conductivity"})
         self.assertEqual(result["safety_uncertainty_band"], [0.3, 0.7])
         self.assertTrue(
-            any("three-input result is inconclusive" in warning for warning in result["warnings"])
+            any("requires all six model measurements" in warning for warning in result["warnings"])
         )
         self.assertTrue(result["ph_prediction_caution"])
 
@@ -69,20 +72,20 @@ class ModelServiceTests(unittest.TestCase):
         self.assertEqual(set(result["entered_metrics"]), set(FEATURE_COLUMNS))
         self.assertEqual(
             set(result["unused_metrics"]),
-            set(FEATURE_COLUMNS) - set(USER_INPUT_FEATURES),
+            {"Alkalinity"},
         )
         self.assertTrue(
             any("do not use optional measurement" in warning for warning in result["warnings"])
         )
 
-    def test_pH_regression_uses_form_features_and_classifier_probability(self) -> None:
+    def test_both_models_use_the_aqua_epoch_six_feature_panel(self) -> None:
         self.assertEqual(
             self.service.info()["classification_feature_columns"],
-            list(USER_INPUT_FEATURES),
+            ["Turbidity", "Hardness", "TDS", "Fluoride", "Nitrate", "Conductivity"],
         )
         self.assertEqual(
             REGRESSION_FEATURE_COLUMNS,
-            ("Turbidity", "Hardness", "TDS", "SafeProbability"),
+            ("Turbidity", "Hardness", "TDS", "Fluoride", "Nitrate", "Conductivity"),
         )
         self.assertIn("Alkalinity", FEATURE_COLUMNS)
         self.assertNotIn("Potability", FEATURE_COLUMNS)

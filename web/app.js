@@ -103,11 +103,10 @@ function displayResult(result) {
       ? 'held-out false-safe errors — not a safety guarantee'
       : 'model probability of safe (1)';
   document.querySelector('#ph-value').textContent = result.predicted_ph.toFixed(2);
-  const safeProbability = `${(result.ph_classifier_safe_probability * 100).toFixed(1)}% Safe`;
   document.querySelector('#ph-note').textContent = result.ph_prediction_caution
-    ? `weak validation · held-out MAE ${modelInfo.regression.metrics.mae.toFixed(2)} pH · classifier probability (${safeProbability})`
+    ? `weak validation · held-out MAE ${modelInfo.regression.metrics.mae.toFixed(2)} pH`
     : result.ph_within_physical_range
-      ? `experimental estimate · uses classifier probability (${safeProbability})`
+      ? 'experimental estimate · three model features use training medians'
       : 'outside physical pH range — verify reading';
   document.querySelector('#disclaimer').textContent = result.disclaimer;
   displayGuidance(result.input_guidance);
@@ -124,11 +123,13 @@ async function initialize() {
     connectionDot.classList.add('ready');
     version.textContent = `Model v${modelInfo.model_version}`;
     const cm = modelInfo.classification.metrics;
+    const fullPanelCm = modelInfo.classification.full_feature_metrics;
     const rm = modelInfo.regression.metrics;
+    const fullPanelRm = modelInfo.regression.full_feature_metrics;
     const classifierName = modelInfo.classification.display_name || 'Random Forest';
     const regressionName = modelInfo.regression.display_name || modelInfo.regression.model;
-    document.querySelector('#class-metrics').textContent = `${classifierName} · ROC-AUC ${cm.roc_auc.toFixed(3)} · safe-class F1 ${cm.f1_safe.toFixed(3)}`;
-    document.querySelector('#reg-metrics').textContent = `${regressionName} · MAE ${rm.mae.toFixed(3)} · RMSE ${rm.rmse.toFixed(3)} · R² ${rm.r2.toFixed(3)} (${modelInfo.regression.signal_status} signal)`;
+    document.querySelector('#class-metrics').textContent = `${classifierName} · median-input AUC ${cm.roc_auc.toFixed(3)} · six-measured AUC ${fullPanelCm.roc_auc.toFixed(3)}`;
+    document.querySelector('#reg-metrics').textContent = `${regressionName} · MAE ${rm.mae.toFixed(3)} (median inputs; ${fullPanelRm.mae.toFixed(3)} with six measured) · R² ${rm.r2.toFixed(3)} (${modelInfo.regression.signal_status} signal)`;
   } catch (error) {
     connection.textContent = 'Unable to load model service. Train models and start the server.';
     connectionDot.classList.add('error');

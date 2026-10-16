@@ -13,19 +13,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import (
-    ExtraTreesRegressor,
-    GradientBoostingClassifier,
-    GradientBoostingRegressor,
-    HistGradientBoostingClassifier,
-    HistGradientBoostingRegressor,
-    RandomForestClassifier,
-    RandomForestRegressor,
-)
-from sklearn.dummy import DummyRegressor
+from sklearn.base import clone
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
-from sklearn.linear_model import Ridge
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
@@ -47,7 +38,6 @@ from sklearn.model_selection import (
     train_test_split,
 )
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
 from .config import (
     ARTIFACTS_DIR,
@@ -56,10 +46,12 @@ from .config import (
     DATASET_FILENAME,
     DOCS_DIR,
     FEATURE_COLUMNS,
+    MODEL_FEATURE_COLUMNS,
     MODELS_DIR,
     REGRESSION_FEATURE_COLUMNS,
     REGRESSION_TARGET,
     SAFETY_UNCERTAINTY_BAND,
+    USER_INPUT_FEATURES,
     source_data_candidates,
 )
 
@@ -97,8 +89,8 @@ def _make_dirs() -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
-def _make_classifier_candidates(seed: int) -> dict[str, Pipeline]:
-    """Candidates trained only on the three measurements collected by the UI."""
+def _make_classifier_candidates() -> dict[str, Pipeline]:
+    """Return the Random Forest classifier from the Aqua-Epoch notebook."""
     return {
         "Random Forest": Pipeline(
             [
@@ -110,39 +102,9 @@ def _make_classifier_candidates(seed: int) -> dict[str, Pipeline]:
                         max_depth=12,
                         min_samples_split=10,
                         min_samples_leaf=5,
-                        max_features=1.0,
+                        max_features=None,
                         n_jobs=-1,
-                        random_state=seed,
-                    ),
-                ),
-            ]
-        ),
-        "Gradient Boosting": Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median")),
-                (
-                    "model",
-                    GradientBoostingClassifier(
-                        n_estimators=250,
-                        learning_rate=0.04,
-                        max_depth=2,
-                        min_samples_leaf=5,
-                        random_state=seed,
-                    ),
-                ),
-            ]
-        ),
-        "Histogram Gradient Boosting": Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median")),
-                (
-                    "model",
-                    HistGradientBoostingClassifier(
-                        max_iter=300,
-                        learning_rate=0.05,
-                        max_leaf_nodes=15,
-                        l2_regularization=2.0,
-                        random_state=seed,
+                        random_state=42,
                     ),
                 ),
             ]
@@ -151,86 +113,23 @@ def _make_classifier_candidates(seed: int) -> dict[str, Pipeline]:
 
 
 def _make_regression_candidates() -> dict[str, Pipeline]:
-    """pH models for the three form inputs and cross-fitted Safe probability."""
+    """Return the Random Forest pH regressor from the Aqua-Epoch notebook."""
     return {
-        "Gradient Boosting": Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
-                (
-                    "model",
-                    GradientBoostingRegressor(
-                        n_estimators=250,
-                        learning_rate=0.04,
-                        max_depth=2,
-                        loss="huber",
-                        random_state=45,
-                    ),
-                ),
-            ]
-        ),
-        "Histogram Gradient Boosting": Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
-                (
-                    "model",
-                    HistGradientBoostingRegressor(
-                        max_iter=250,
-                        learning_rate=0.06,
-                        l2_regularization=1,
-                        random_state=45,
-                    ),
-                ),
-            ]
-        ),
         "Random Forest": Pipeline(
             [
                 ("imputer", SimpleImputer(strategy="median")),
                 (
                     "model",
                     RandomForestRegressor(
-                        n_estimators=250,
-                        min_samples_leaf=8,
+                        n_estimators=200,
+                        max_depth=12,
+                        min_samples_split=10,
+                        min_samples_leaf=5,
                         max_features=1.0,
-                        random_state=45,
+                        random_state=42,
                         n_jobs=-1,
                     ),
                 ),
-            ]
-        ),
-        "Extra Trees": Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median")),
-                (
-                    "model",
-                    ExtraTreesRegressor(
-                        n_estimators=250,
-                        min_samples_leaf=8,
-                        max_features=1.0,
-                        random_state=45,
-                        n_jobs=-1,
-                    ),
-                ),
-            ]
-        ),
-        "Mean baseline": Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median")),
-                ("model", DummyRegressor(strategy="mean")),
-            ]
-        ),
-        "Ridge": Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
-                ("scale", StandardScaler()),
-                ("model", Ridge(alpha=10.0)),
-            ]
-        ),
-        "Polynomial Ridge": Pipeline(
-            [
-                ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
-                ("scale", StandardScaler()),
-                ("poly", PolynomialFeatures(degree=2, include_bias=False)),
-                ("model", Ridge(alpha=100.0)                ),
             ]
         ),
     }
@@ -244,13 +143,24 @@ def _safe_probability(model: Pipeline, features: pd.DataFrame) -> np.ndarray:
     return model.predict_proba(features)[:, classes.index(1)]
 
 
-def _cross_fitted_probabilities(
+def _fill_unmeasured_features(
+    features: pd.DataFrame,
+    defaults: dict[str, float],
+) -> pd.DataFrame:
+    """Match the website's three-input contract for a six-feature model."""
+    completed = features.copy()
+    for feature in set(MODEL_FEATURE_COLUMNS) - set(USER_INPUT_FEATURES):
+        completed[feature] = defaults[feature]
+    return completed.loc[:, MODEL_FEATURE_COLUMNS]
+
+
+def _cross_fitted_safe_probabilities(
     model: Pipeline,
     features: pd.DataFrame,
     target: pd.Series,
     seed: int,
-) -> pd.Series:
-    """Generate training probabilities without fitting on each row's label."""
+) -> np.ndarray:
+    """Generate training-only out-of-fold Safe probabilities."""
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
     probabilities = cross_val_predict(
         model,
@@ -260,18 +170,8 @@ def _cross_fitted_probabilities(
         method="predict_proba",
         n_jobs=1,
     )
-    classes = np.unique(target)
-    safe_index = int(np.flatnonzero(classes == 1)[0])
-    return pd.Series(probabilities[:, safe_index], index=features.index)
-
-
-def _regression_features(
-    chemistry: pd.DataFrame,
-    safe_probabilities: pd.Series,
-) -> pd.DataFrame:
-    features = chemistry.loc[:, CLASSIFICATION_FEATURE_COLUMNS].copy()
-    features["SafeProbability"] = safe_probabilities
-    return features.loc[:, REGRESSION_FEATURE_COLUMNS]
+    safe_index = int(np.flatnonzero(np.unique(target) == 1)[0])
+    return probabilities[:, safe_index]
 
 
 def _uncertainty_policy_metrics(
@@ -417,11 +317,17 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
     ]
     yr_test = y_reg.loc[Xr_test_chemistry.index]
 
-    print(f"Selecting a three-input classifier using five-fold CV on {len(Xc_train):,} rows …")
-    classification_candidates = _make_classifier_candidates(seed)
+    training_medians = {
+        feature: float(X_all.loc[train_indices, feature].median())
+        for feature in MODEL_FEATURE_COLUMNS
+    }
+    if not all(np.isfinite(value) for value in training_medians.values()):
+        raise ValueError("Could not calculate training medians for every model input.")
+
+    print(f"Evaluating the Aqua-Epoch Random Forest on {len(Xc_train):,} rows …")
+    classification_candidates = _make_classifier_candidates()
     classification_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
     classification_cv_results: dict[str, dict[str, float]] = {}
-    classification_auc: dict[str, float] = {}
     for candidate_name, candidate in classification_candidates.items():
         scores = cross_validate(
             candidate,
@@ -435,17 +341,17 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
             },
             n_jobs=1,
         )
-        classification_auc[candidate_name] = float(scores["test_roc_auc"].mean())
         classification_cv_results[candidate_name] = {
             "mean_roc_auc": float(scores["test_roc_auc"].mean()),
             "std_roc_auc": float(scores["test_roc_auc"].std()),
             "mean_balanced_accuracy": float(scores["test_balanced_accuracy"].mean()),
             "mean_accuracy": float(scores["test_accuracy"].mean()),
         }
-    classifier_name = max(classification_auc, key=classification_auc.get)
+    classifier_name = "Random Forest"
     classifier_evaluation = classification_candidates[classifier_name]
     classifier_evaluation.fit(Xc_train, yc_train)
-    class_probabilities = _safe_probability(classifier_evaluation, Xc_test)
+    website_classification_test = _fill_unmeasured_features(Xc_test, training_medians)
+    class_probabilities = _safe_probability(classifier_evaluation, website_classification_test)
     class_predictions = (class_probabilities >= 0.50).astype(int)
     class_metrics = {
         "accuracy": accuracy_score(yc_test, class_predictions),
@@ -458,59 +364,32 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
         "test_rows": int(len(yc_test)),
     }
     class_matrix = confusion_matrix(yc_test, class_predictions, labels=[0, 1])
-    classification_oof_probabilities = cross_val_predict(
+    full_feature_class_probabilities = _safe_probability(classifier_evaluation, Xc_test)
+    full_feature_class_predictions = (full_feature_class_probabilities >= 0.50).astype(int)
+    full_feature_class_metrics = {
+        "accuracy": accuracy_score(yc_test, full_feature_class_predictions),
+        "balanced_accuracy": balanced_accuracy_score(yc_test, full_feature_class_predictions),
+        "roc_auc": roc_auc_score(yc_test, full_feature_class_probabilities),
+        "test_rows": int(len(yc_test)),
+    }
+    classification_oof_probabilities = _cross_fitted_safe_probabilities(
         classification_candidates[classifier_name],
         Xc_train,
         yc_train,
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=seed + 1),
-        method="predict_proba",
-        n_jobs=1,
-    )[:, list(classifier_evaluation.classes_).index(1)]
+        seed + 1,
+    )
     uncertainty_policy_metrics = _uncertainty_policy_metrics(
         yc_train,
         classification_oof_probabilities,
     )
 
-    # Keep pH hold-out rows out of the classifier and cross-fit training scores.
-    class_indices_for_regression = X_class.index.intersection(
-        Xr_train_chemistry.index
-    )
-    Xc_for_regression = X_class.loc[class_indices_for_regression]
-    yc_for_regression = y_class.loc[class_indices_for_regression]
-    regression_classifier = classification_candidates[classifier_name]
-    regression_classifier.fit(Xc_for_regression, yc_for_regression)
-    train_safe_probabilities = _cross_fitted_probabilities(
-        classification_candidates[classifier_name],
-        Xc_for_regression,
-        yc_for_regression,
-        seed,
-    )
-    regression_train_probabilities = train_safe_probabilities.reindex(
-        Xr_train_chemistry.index
-    )
-    missing_train_probabilities = regression_train_probabilities.isna()
-    if missing_train_probabilities.any():
-        rows_without_class_label = regression_train_probabilities.index[
-            missing_train_probabilities
-        ]
-        regression_train_probabilities.loc[rows_without_class_label] = _safe_probability(
-            regression_classifier,
-            Xr_train_chemistry.loc[rows_without_class_label],
-        )
-    regression_test_probabilities = pd.Series(
-        _safe_probability(regression_classifier, Xr_test_chemistry),
-        index=Xr_test_chemistry.index,
-    )
-    Xr_train = _regression_features(
-        Xr_train_chemistry,
-        regression_train_probabilities,
-    )
-    Xr_test = _regression_features(
+    Xr_train = Xr_train_chemistry.loc[:, REGRESSION_FEATURE_COLUMNS]
+    website_regression_test = _fill_unmeasured_features(
         Xr_test_chemistry,
-        regression_test_probabilities,
+        training_medians,
     )
 
-    print(f"Selecting a three-input pH model from {len(Xr_train):,} rows …")
+    print(f"Evaluating the Aqua-Epoch pH Random Forest on {len(Xr_train):,} rows …")
     regression_candidates = _make_regression_candidates()
     regression_cv = KFold(n_splits=5, shuffle=True, random_state=seed)
     regression_cv_results: dict[str, dict[str, object]] = {}
@@ -537,7 +416,14 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
     )
     regressor_evaluation = regression_candidates[regression_model_name]
     regressor_evaluation.fit(Xr_train, yr_train)
-    reg_predictions = np.asarray(regressor_evaluation.predict(Xr_test), dtype=float)
+    reg_predictions = np.asarray(
+        regressor_evaluation.predict(website_regression_test),
+        dtype=float,
+    )
+    full_feature_reg_predictions = np.asarray(
+        regressor_evaluation.predict(Xr_test_chemistry.loc[:, REGRESSION_FEATURE_COLUMNS]),
+        dtype=float,
+    )
     baseline_prediction = np.full(len(yr_test), float(yr_train.mean()))
     reg_metrics = {
         "mae": mean_absolute_error(yr_test, reg_predictions),
@@ -546,44 +432,29 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
         "training_mean_baseline_r2": r2_score(yr_test, baseline_prediction),
         "test_rows": int(len(yr_test)),
     }
+    full_feature_reg_metrics = {
+        "mae": mean_absolute_error(yr_test, full_feature_reg_predictions),
+        "rmse": float(np.sqrt(mean_squared_error(yr_test, full_feature_reg_predictions))),
+        "r2": r2_score(yr_test, full_feature_reg_predictions),
+        "test_rows": int(len(yr_test)),
+    }
 
     # Refit persisted models on all task-specific rows only after evaluation.
-    classifier = _make_classifier_candidates(seed)[classifier_name]
+    classifier = _make_classifier_candidates()[classifier_name]
     classifier.fit(X_class, y_class)
-    from sklearn.base import clone
-
     regressor = clone(regressor_evaluation)
-    all_train_safe_probabilities = _cross_fitted_probabilities(
-        _make_classifier_candidates(seed)[classifier_name],
-        X_class,
-        y_class,
-        seed,
-    )
-    regression_safe_probabilities = all_train_safe_probabilities.reindex(
-        X_reg_chemistry.index
-    )
-    missing_final_probabilities = regression_safe_probabilities.isna()
-    if missing_final_probabilities.any():
-        rows_without_class_label = regression_safe_probabilities.index[
-            missing_final_probabilities
-        ]
-        regression_safe_probabilities.loc[rows_without_class_label] = _safe_probability(
-            classifier,
-            X_reg_chemistry.loc[rows_without_class_label],
-        )
-    X_reg = _regression_features(X_reg_chemistry, regression_safe_probabilities)
-    regressor.fit(X_reg, y_reg)
+    regressor.fit(X_reg_chemistry.loc[:, REGRESSION_FEATURE_COLUMNS], y_reg)
 
     class_model = classifier_evaluation.named_steps["model"]
     class_importance = _plot_importance(
         class_model.feature_importances_,
         CLASSIFICATION_FEATURE_COLUMNS,
         "classification_feature_importance.png",
-        f"Task A — three-input {classifier_name} feature importance",
+        f"Task A — six-feature {classifier_name} feature importance",
     )
     reg_permutation = permutation_importance(
         regressor_evaluation,
-        Xr_test,
+        website_regression_test,
         yr_test,
         n_repeats=3,
         random_state=seed,
@@ -615,12 +486,12 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
             "p99": float(column.quantile(0.99)),
             "median": float(column.median()),
         }
-        defaults[feature] = float(column.median())
+        defaults[feature] = float(X_all.loc[train_indices, feature].median())
         missingness[feature] = int(column.isna().sum())
 
     metadata: dict[str, object] = {
         "project": "Aqua-Epoch Water Intelligence Platform",
-        "model_version": "5.1.0-three-input-cautious",
+        "model_version": "6.0.0-aqua-epoch-median-input-rf",
         "trained_on": str(date.today()),
         "dataset": {
             "filename": dataset_path.name,
@@ -629,6 +500,10 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
             "source_rows": int(source_rows),
         },
         "feature_columns": list(FEATURE_COLUMNS),
+        "model_feature_columns": list(MODEL_FEATURE_COLUMNS),
+        "defaulted_feature_columns": [
+            feature for feature in MODEL_FEATURE_COLUMNS if feature not in USER_INPUT_FEATURES
+        ],
         "classification_feature_columns": list(CLASSIFICATION_FEATURE_COLUMNS),
         "regression_feature_columns": list(REGRESSION_FEATURE_COLUMNS),
         "feature_ranges": ranges,
@@ -650,10 +525,14 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
             "display_name": classifier_name,
             "model": str(classifier_evaluation.named_steps["model"]),
             "selection": (
-                "Selected by the highest mean ROC-AUC in five-fold stratified cross-validation "
-                "on the training partition, using the three measurements collected by the website."
+                "Aqua-Epoch simple Random Forest architecture trained on all six model features. "
+                "Website predictions replace Fluoride, Nitrate, and Conductivity with medians "
+                "calculated from the training partition."
             ),
+            "website_input_policy": "Three website inputs; other model features use training medians.",
+            "full_feature_cross_validation": classification_cv_results,
             "cross_validation": classification_cv_results,
+            "full_feature_metrics": full_feature_class_metrics,
             "uncertainty_policy": uncertainty_policy_metrics,
             "metrics": class_metrics,
             "confusion_matrix": class_matrix.tolist(),
@@ -665,16 +544,18 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
             "display_name": regression_model_name,
             "features": list(REGRESSION_FEATURE_COLUMNS),
             "selection": (
-                "Selected by the lowest mean absolute error in five-fold cross-validation on the "
-                "training partition. Training uses cross-fitted classifier probabilities to avoid "
-                "feeding the pH regressor observed Potability labels."
+                "Aqua-Epoch simple Random Forest pH architecture trained on the six model features. "
+                "Website predictions replace Fluoride, Nitrate, and Conductivity with medians "
+                "calculated from the training partition."
             ),
             "cross_validation": regression_cv_results,
+            "full_feature_cross_validation": regression_cv_results,
+            "full_feature_metrics": full_feature_reg_metrics,
             "weak_signal_r2_threshold": 0.10,
             "signal_status": "weak" if reg_metrics["r2"] < 0.10 else "measurable",
             "metrics": reg_metrics,
             "feature_importance": reg_importance,
-            "potability_input": "Cross-fitted Safe probability from the classification model.",
+            "website_input_policy": "Three website inputs; other model features use training medians.",
         },
     }
     metadata = _json_ready(metadata)

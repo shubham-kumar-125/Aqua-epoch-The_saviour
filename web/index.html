@@ -80,10 +80,10 @@
             </div>
             <button id="load-sample" type="button" class="quiet-button"><span aria-hidden="true">↻</span> Try a sample</button>
           </div>
-          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance. Both models use these readings directly; the pH estimate also uses the classifier's Safe probability.</p>
+          <p class="form-intro">Enter the three core field measurements. Hover over <b>ⓘ</b> for BIS guidance. The six-feature Aqua-Epoch models fill Fluoride, Nitrate, and Conductivity with training-set medians. Since these are not measured, the safety label remains Inconclusive; confirm with an accredited laboratory.</p>
           <div id="form-error" class="form-error" hidden></div>
           <div id="feature-fields" class="fields"></div>
-          <div class="panel-footer"><span><i class="shield">◈</i> Values checked before analysis</span><span>3 readings <i class="footer-separator"></i> 3 model inputs</span></div>
+          <div class="panel-footer"><span><i class="shield">◈</i> Values checked before analysis</span><span>3 readings <i class="footer-separator"></i> 6 model features</span></div>
           <button id="submit-button" type="submit" class="predict-button"><span>Explore water insights</span> <b aria-hidden="true">→</b></button>
         </form>
 

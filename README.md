@@ -4,8 +4,8 @@ A complete, reproducible submission for the Aqua-Epoch machine-learning and web-
 
 ## Delivered
 
-- **Task A — Classification:** estimates `Safe (1)` / `Unsafe (0)` from the three measurements collected by the dashboard; five-fold cross-validation selects the classifier.
-- **Task B — Regression:** estimates pH from those same three measurements and a cross-fitted Safe probability from Task A.
+- **Task A — Classification:** restores the Aqua-Epoch Random Forest trained on Turbidity, Hardness, TDS, Fluoride, Nitrate, and Conductivity.
+- **Task B — Regression:** restores the Aqua-Epoch Random Forest pH estimator using the same six measurements.
 - **Validated REST API:** `GET /api/health`, `GET /api/model-info`, and `POST /api/predict`.
 - **Web application:** responsive form, client/server validation, sample loading, and result cards.
 - **Round 1 materials:** a reproducible PDF technical deck, Markdown report, figures, evaluation metrics, and demo script generated from the trained artifacts.
@@ -14,15 +14,15 @@ A complete, reproducible submission for the Aqua-Epoch machine-learning and web-
 
 This is a decision-support prototype, not a drinking-water certification system. A model prediction must never replace BIS testing, local regulation, or laboratory confirmation. The supplied dataset has major quality concerns: pH labels are missing or physically out of range, and the cleaned TDS median is about 20,773 mg/L (BIS acceptable guidance is 500 mg/L). Verify the source, units, and labels before relying on any result.
 
-The dashboard asks only for **Turbidity, Total Hardness, and TDS**. Both deployed models are trained on these same values, so they do not depend on hidden median-filled chemistry inputs. The live safety result is **Inconclusive** for intermediate Safe probabilities (30–70%); this avoids making a confident binary claim when the three inputs are ambiguous. The pH regressor consumes a cross-fitted Safe probability from the classifier. Its weak held-out signal is prominent in the app; treat its numeric output as experimental, not reliable.
+The dashboard continues to ask for **Turbidity, Total Hardness, and TDS**. The restored Aqua-Epoch models require three additional chemistry features; when those values are not supplied, the backend fills Fluoride, Nitrate, and Conductivity with medians calculated from the training partition. The API response lists these defaulted fields and their applied values. Predictions with median-filled inputs can be less reliable than predictions with all six measurements entered, so the live safety label is **Inconclusive** whenever any model feature is median-filled; with all six measured values, scores between 30–70% are also inconclusive. The pH model has weak held-out signal even with all six features; treat its numeric output as experimental, not reliable.
 
 API clients may additionally provide Fluoride, Nitrate, Conductivity, and Alkalinity in the same `POST /api/predict` JSON body for compatibility; the current models ignore these optional values and disclose that in the response. Inputs outside the central 98% of the training distribution are flagged.
 
 ## Model selection
 
-`python run.py train` evaluates candidate models using the exact three-field deployment input. Task A selects by five-fold stratified ROC-AUC and Task B by five-fold MAE. Both are reported on a shared 23% held-out split with seed 15. The pH model uses cross-fitted classifier probabilities, not observed Potability labels, during training.
+`python run.py train` restores the Random Forest architectures from `notebooks/aqua_epoch_simple_model.ipynb`, trained on all six measured features. The held-out metrics shown for deployment replace the three unentered chemistry readings with training-partition medians, matching the website's input policy; full-feature cross-validation results are separately marked in the generated metadata. The pH model does not consume classifier predictions.
 
-The three-input classifier has conflicting labels among near-identical samples, so its probability is not a definitive water-safety determination. Adding Fluoride, Nitrate, and Conductivity substantially improved offline classification, but the simplified form was intentionally retained. The pH model's weak held-out R² is a data-quality finding, not a reason to claim high accuracy. With only the form measurements, the supplied dataset does not contain enough signal for reliable pH estimation. The project reports held-out MAE, RMSE, R², and cross-validation results transparently.
+The three core measurements alone cannot reproduce the simple notebook's all-six-feature evaluation. Filling missing chemistry with a median is a product choice, not a measured value, and the UI warns about the lower-confidence input policy. The pH model's weak held-out R² is a data-quality finding, not a reason to claim high accuracy. The project reports held-out MAE, RMSE, R², and cross-validation results transparently.
 
 ## Quick start
 
@@ -91,7 +91,7 @@ Response fields include `safety_label`, `safe_probability`, `predicted_ph`, vali
 └── run.py                        # train, report, and serve commands
 ```
 
-`main2.ipynb` is retained as the original experiment; `python run.py train` is the supported deployment-training entry point for the three-input models served by the dashboard.
+`main2.ipynb` and the earlier experiments are retained for reference; `python run.py train` is the supported deployment-training entry point for the Aqua-Epoch Random Forest models served by the dashboard.
 
 ## Submission checklist
 

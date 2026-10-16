@@ -14,38 +14,34 @@ DATASET_FILENAME = "Aqua_Epoch_BIS_Water_Quality_Dataset.csv"
 CLASSIFICATION_TARGET = "Potability"
 REGRESSION_TARGET = "pH"
 
-# Task A is trained on the measurements collected by the public form.
-CLASSIFICATION_FEATURE_COLUMNS = (
+# Both Aqua-Epoch Random Forest models were trained on these six measurements.
+MODEL_FEATURE_COLUMNS = (
     "Turbidity",
     "Hardness",
     "TDS",
+    "Fluoride",
+    "Nitrate",
+    "Conductivity",
 )
 
-# Task B uses the same three measurements and the classifier's cross-fitted
-# Safe probability as a stacked model input.
-REGRESSION_FEATURE_COLUMNS = (
-    "Turbidity",
-    "Hardness",
-    "TDS",
-    "SafeProbability",
-)
+CLASSIFICATION_FEATURE_COLUMNS = MODEL_FEATURE_COLUMNS
+REGRESSION_FEATURE_COLUMNS = MODEL_FEATURE_COLUMNS
 
 SAFETY_UNCERTAINTY_BAND = (0.30, 0.70)
 
-# Chemical measurements accepted by the API. The deployed models use only
-# the three measurements collected by the public form.
+# Additional chemistry fields remain accepted by the API for compatibility.
 FEATURE_COLUMNS = (
     "Turbidity",
     "Hardness",
     "TDS",
-    "Nitrate",
     "Fluoride",
+    "Nitrate",
     "Conductivity",
     "Alkalinity",
 )
 
-# Keep the public form focused on three common measurements. The limits below
-# validate physical form input, while BIS values are guidance, not model rules.
+# Keep the public form focused on three common measurements. The other model
+# features use training-set medians unless an API client supplies them.
 USER_INPUT_FEATURES = ("Turbidity", "Hardness", "TDS")
 USER_INPUT_SPECS = {
     "Turbidity": {

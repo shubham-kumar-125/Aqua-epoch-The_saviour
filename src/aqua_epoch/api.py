@@ -18,6 +18,7 @@ from .config import (
     BIS_REFERENCE,
     CLASSIFICATION_FEATURE_COLUMNS,
     DISCLAIMER,
+    MODEL_FEATURE_COLUMNS,
     MODELS_DIR,
     REGRESSION_FEATURE_COLUMNS,
     SAFETY_UNCERTAINTY_BAND,
@@ -59,6 +60,14 @@ class ModelService:
             "model_version": self.metadata["model_version"],
             "trained_on": self.metadata["trained_on"],
             "feature_columns": self.metadata["feature_columns"],
+            "model_feature_columns": self.metadata.get(
+                "model_feature_columns",
+                list(MODEL_FEATURE_COLUMNS),
+            ),
+            "defaulted_feature_columns": self.metadata.get(
+                "defaulted_feature_columns",
+                [],
+            ),
             "classification_feature_columns": self.metadata.get("classification_feature_columns", list(CLASSIFICATION_FEATURE_COLUMNS)),
             "regression_feature_columns": self.metadata.get("regression_feature_columns", list(REGRESSION_FEATURE_COLUMNS)),
             "user_input_features": list(USER_INPUT_FEATURES),
@@ -75,8 +84,24 @@ class ModelService:
         cleaned, errors, warnings = validate_payload(payload, self.metadata["feature_ranges"])
         if errors:
             raise RequestValidationError(errors, warnings)
+        model_inputs = {
+            feature: cleaned.get(feature, float(self.metadata["defaults"][feature]))
+            for feature in MODEL_FEATURE_COLUMNS
+        }
+        defaulted_features = [
+            feature for feature in MODEL_FEATURE_COLUMNS if feature not in cleaned
+        ]
+        if defaulted_features:
+            default_summary = ", ".join(
+                f"{feature}={model_inputs[feature]:g}" for feature in defaulted_features
+            )
+            warnings.append(
+                "The website collects only Turbidity, Hardness, and TDS. Training-set "
+                f"medians were used for missing model inputs: {default_summary}. "
+                "These predictions may be less reliable than results with measured values."
+            )
         classification_frame = pd.DataFrame(
-            [{feature: cleaned[feature] for feature in CLASSIFICATION_FEATURE_COLUMNS}],
+            [model_inputs],
             columns=CLASSIFICATION_FEATURE_COLUMNS,
         )
         probabilities = self.classifier.predict_proba(classification_frame)[0]
@@ -93,7 +118,15 @@ class ModelService:
         )
         lower_threshold = float(uncertainty_policy["lower_safe_probability"])
         upper_threshold = float(uncertainty_policy["upper_safe_probability"])
-        if safe_probability <= lower_threshold:
+        if defaulted_features:
+            safety_label = "Inconclusive"
+            safety_code: int | None = None
+            warnings.append(
+                "A Safe/Unsafe label requires all six model measurements. Because one or more "
+                "were replaced with training medians, this three-measurement screening result "
+                "is inconclusive; confirm with laboratory testing."
+            )
+        elif safe_probability <= lower_threshold:
             safety_label = "Unsafe"
             safety_code: int | None = 0
         elif safe_probability >= upper_threshold:
@@ -104,8 +137,8 @@ class ModelService:
             safety_code = None
             warnings.append(
                 f"The model's Safe probability ({safe_probability:.1%}) is between "
-                f"{lower_threshold:.0%} and {upper_threshold:.0%}; the three-input result "
-                "is inconclusive. Confirm with laboratory testing."
+                f"{lower_threshold:.0%} and {upper_threshold:.0%}; with only the three "
+                "website readings, the result is inconclusive. Confirm with laboratory testing."
             )
         confusion = self.metadata["classification"]["confusion_matrix"]
         held_out_unsafe = sum(confusion[0])
@@ -119,26 +152,16 @@ class ModelService:
                 f"(false-safe rate {false_safe_rate:.1%}); "
                 "do not use this prediction alone to determine water safety."
             )
-        unused_metrics = [
-            feature for feature in cleaned if feature not in CLASSIFICATION_FEATURE_COLUMNS
-        ]
+        unused_metrics = [feature for feature in cleaned if feature not in MODEL_FEATURE_COLUMNS]
         if unused_metrics:
             warnings.append(
-                "The current three-input models do not use optional measurement(s): "
+                "The current models do not use optional measurement(s): "
                 + ", ".join(unused_metrics)
                 + "."
             )
-        regression_features = {
-            feature: cleaned[feature] for feature in CLASSIFICATION_FEATURE_COLUMNS
-        }
-        regression_features["SafeProbability"] = safe_probability
-        regression_frame = pd.DataFrame([regression_features], columns=REGRESSION_FEATURE_COLUMNS)
+        regression_frame = pd.DataFrame([model_inputs], columns=REGRESSION_FEATURE_COLUMNS)
         predicted_ph = float(self.regressor.predict(regression_frame)[0])
         regression = self.metadata["regression"]
-        warnings.append(
-            "The pH model uses the classifier's predicted Safe probability as an input; "
-            "it is not a laboratory measurement."
-        )
         ph_prediction_caution = regression.get("signal_status") == "weak"
         if ph_prediction_caution:
             r2 = float(regression["metrics"]["r2"])
@@ -181,13 +204,13 @@ class ModelService:
             "classification_threshold": threshold,
             "safety_uncertainty_band": [lower_threshold, upper_threshold],
             "predicted_ph": round(predicted_ph, 4),
-            "ph_potability_input": "classifier Safe probability",
-            "ph_classifier_safe_probability": round(safe_probability, 6),
+            "ph_input_features": list(REGRESSION_FEATURE_COLUMNS),
             "ph_prediction_caution": ph_prediction_caution,
             "ph_within_physical_range": 0 <= predicted_ph <= 14,
+            "model_inputs": model_inputs,
             "entered_metrics": cleaned,
             "unused_metrics": unused_metrics,
-            "defaulted_features": [],
+            "defaulted_features": defaulted_features,
             "input_guidance": guidance,
             "warnings": warnings,
             "model_version": self.metadata["model_version"],
