@@ -30,6 +30,8 @@ REGRESSION_FEATURE_COLUMNS = (
     "SafeProbability",
 )
 
+SAFETY_UNCERTAINTY_BAND = (0.30, 0.70)
+
 # Chemical measurements accepted by the API. The deployed models use only
 # the three measurements collected by the public form.
 FEATURE_COLUMNS = (

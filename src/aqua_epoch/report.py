@@ -169,7 +169,7 @@ The prototype predicts a binary water-safety label (`Unsafe=0`, `Safe=1`) and es
 
 ## Models and held-out results
 
-Task A selects among three classifiers by training-only five-fold stratified ROC-AUC. The chosen `{classification['display_name']}` uses the same three measurements as the live form, with a 0.50 Safe-probability threshold. The reported confusion matrix uses rows as actual labels (`Unsafe`, `Safe`) and columns as predicted labels (`Unsafe`, `Safe`).
+Task A selects among three classifiers by training-only five-fold stratified ROC-AUC. The chosen `{classification['display_name']}` uses the same three measurements as the live form. The hold-out metrics below use a 0.50 Safe-probability threshold; the live service only reports a determinate label at or below the conservative Unsafe cutoff or at or above the Safe cutoff.
 
 | Classification metric | Held-out result |
 | --- | ---: |
@@ -182,6 +182,8 @@ Task A selects among three classifiers by training-only five-fold stratified ROC
 | Confusion matrix | `[[{matrix[0][0]}, {matrix[0][1]}], [{matrix[1][0]}, {matrix[1][1]}]]` |
 
 At this threshold the model marks {matrix[0][1]:,} of {sum(matrix[0]):,} held-out unsafe samples as Safe. This false-safe error is safety-critical; the model is not suitable for operational certification.
+
+The live service reports **Inconclusive** when the Safe probability falls between {classification['uncertainty_policy']['lower_safe_probability']:.0%} and {classification['uncertainty_policy']['upper_safe_probability']:.0%}. On separate training-only out-of-fold predictions, the policy resolved {classification['uncertainty_policy']['coverage']:.1%} of rows with {classification['uncertainty_policy']['resolved_accuracy']:.1%} accuracy; unresolved cases require laboratory testing. These are internal validation results, not a guarantee for new water sources.
 
 Task B selects a regression pipeline using the lowest mean absolute error in five-fold cross-validation on the training partition. The selected model is `{regression['model']}`. Its training inputs include cross-fitted classifier probabilities rather than observed Potability labels, matching the value available at inference.
 
@@ -320,7 +322,7 @@ def build_report(metadata: dict[str, Any] | None = None) -> Path:
             fig.text(0.92, y, f"{item['importance']:.3f}", fontsize=11, color=TEAL, ha="right")
         _text_block(
             fig, 0.68, 0.29, "Deployment caveat",
-            "The classifier is trained and evaluated on exactly the three measurements collected by the browser form, rather than relying on extra measurements filled with training-set medians.",
+            "The classifier uses exactly the three measurements collected by the browser form. The live service reports Inconclusive for intermediate Safe probabilities; only stronger model scores receive a binary label.",
             width=42, heading_color=ORANGE, body_size=9.5,
         )
         pdf.savefig(fig, bbox_inches="tight")

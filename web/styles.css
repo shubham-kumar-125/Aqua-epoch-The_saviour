@@ -349,9 +349,12 @@ h1 em { color: #a6e8d2; }
 .safety-card::after { border-color: rgba(43, 131, 104, .16); }
 .safety-card.unsafe { border-color: #eac6b9; background: linear-gradient(120deg, #fff3ed, #fffaf7); }
 .safety-card.unsafe::after { border-color: rgba(189, 94, 73, .17); }
+.safety-card.inconclusive { border-color: #e7d6a2; background: linear-gradient(120deg, #fbf6e9, #fffdf7); }
+.safety-card.inconclusive::after { border-color: rgba(174, 133, 48, .17); }
 .safety-card .card-label, .ph-card span { color: #678185; font-size: .59rem; }
 .safety-card #safety-label { color: #19745f; }
 .safety-card.unsafe #safety-label { color: #ad503d; }
+.safety-card.inconclusive #safety-label { color: #916b1f; }
 .safety-card strong, .ph-card strong { color: #163d45; font-size: 2.45rem; }
 .safety-card small, .ph-card small { color: #70898a; }
 .ph-card { border-color: #d8e5f0; background: linear-gradient(120deg, #f2f8fc, #fbfdff); }

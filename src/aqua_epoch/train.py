@@ -59,6 +59,7 @@ from .config import (
     MODELS_DIR,
     REGRESSION_FEATURE_COLUMNS,
     REGRESSION_TARGET,
+    SAFETY_UNCERTAINTY_BAND,
     source_data_candidates,
 )
 
@@ -273,6 +274,35 @@ def _regression_features(
     return features.loc[:, REGRESSION_FEATURE_COLUMNS]
 
 
+def _uncertainty_policy_metrics(
+    target: pd.Series,
+    safe_probabilities: np.ndarray,
+) -> dict[str, float | int]:
+    lower, upper = SAFETY_UNCERTAINTY_BAND
+    resolved = (safe_probabilities <= lower) | (safe_probabilities >= upper)
+    if not resolved.any():
+        raise ValueError("The classifier did not resolve any rows outside its uncertainty band.")
+    resolved_predictions = (safe_probabilities[resolved] >= upper).astype(int)
+    resolved_targets = target.to_numpy()[resolved]
+    matrix = confusion_matrix(resolved_targets, resolved_predictions, labels=[0, 1])
+    unsafe_total = int(matrix[0].sum())
+    safe_total = int(matrix[1].sum())
+    predicted_safe_total = int(matrix[:, 1].sum())
+    false_safe_rate = float(matrix[0, 1] / unsafe_total) if unsafe_total else 0.0
+    return {
+        "lower_safe_probability": lower,
+        "upper_safe_probability": upper,
+        "coverage": float(resolved.mean()),
+        "resolved_rows": int(resolved.sum()),
+        "resolved_accuracy": float(accuracy_score(resolved_targets, resolved_predictions)),
+        "resolved_false_safe_rate": false_safe_rate,
+        "resolved_safe_recall": float(matrix[1, 1] / safe_total) if safe_total else 0.0,
+        "resolved_safe_precision": (
+            float(matrix[1, 1] / predicted_safe_total) if predicted_safe_total else 0.0
+        ),
+    }
+
+
 def _plot_confusion(matrix: np.ndarray) -> None:
     fig, ax = plt.subplots(figsize=(6.5, 5))
     image = ax.imshow(matrix, cmap="Blues")
@@ -428,6 +458,18 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
         "test_rows": int(len(yc_test)),
     }
     class_matrix = confusion_matrix(yc_test, class_predictions, labels=[0, 1])
+    classification_oof_probabilities = cross_val_predict(
+        classification_candidates[classifier_name],
+        Xc_train,
+        yc_train,
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=seed + 1),
+        method="predict_proba",
+        n_jobs=1,
+    )[:, list(classifier_evaluation.classes_).index(1)]
+    uncertainty_policy_metrics = _uncertainty_policy_metrics(
+        yc_train,
+        classification_oof_probabilities,
+    )
 
     # Keep pH hold-out rows out of the classifier and cross-fit training scores.
     class_indices_for_regression = X_class.index.intersection(
@@ -578,7 +620,7 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
 
     metadata: dict[str, object] = {
         "project": "Aqua-Epoch Water Intelligence Platform",
-        "model_version": "5.0.0-three-input-stacked",
+        "model_version": "5.1.0-three-input-cautious",
         "trained_on": str(date.today()),
         "dataset": {
             "filename": dataset_path.name,
@@ -612,6 +654,7 @@ def train(data_path: Path | None = None, seed: int = 15) -> dict[str, object]:
                 "on the training partition, using the three measurements collected by the website."
             ),
             "cross_validation": classification_cv_results,
+            "uncertainty_policy": uncertainty_policy_metrics,
             "metrics": class_metrics,
             "confusion_matrix": class_matrix.tolist(),
             "feature_importance": class_importance,

@@ -91,17 +91,21 @@ function displayResult(result) {
   document.querySelector('#empty-state').hidden = true;
   document.querySelector('#result-content').hidden = false;
   const card = document.querySelector('#safety-card');
-  const safe = result.safety_code === 1;
-  card.classList.toggle('unsafe', !safe);
+  const unsafe = result.safety_code === 0;
+  const inconclusive = result.safety_code === null;
+  card.classList.toggle('unsafe', unsafe);
+  card.classList.toggle('inconclusive', inconclusive);
   document.querySelector('#safety-label').textContent = result.safety_label;
   document.querySelector('#safe-probability').textContent = `${(result.safe_probability * 100).toFixed(1)}%`;
-  document.querySelector('#safety-note').textContent = result.safety_prediction_caution
-    ? 'held-out false-safe errors — not a safety guarantee'
-    : 'model probability of safe (1)';
+  document.querySelector('#safety-note').textContent = inconclusive
+    ? 'ambiguous model signal — confirm with a laboratory'
+    : result.safety_prediction_caution
+      ? 'held-out false-safe errors — not a safety guarantee'
+      : 'model probability of safe (1)';
   document.querySelector('#ph-value').textContent = result.predicted_ph.toFixed(2);
   const safeProbability = `${(result.ph_classifier_safe_probability * 100).toFixed(1)}% Safe`;
   document.querySelector('#ph-note').textContent = result.ph_prediction_caution
-    ? `weak validation signal · uses classifier probability (${safeProbability})`
+    ? `weak validation · held-out MAE ${modelInfo.regression.metrics.mae.toFixed(2)} pH · classifier probability (${safeProbability})`
     : result.ph_within_physical_range
       ? `experimental estimate · uses classifier probability (${safeProbability})`
       : 'outside physical pH range — verify reading';

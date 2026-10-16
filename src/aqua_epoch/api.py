@@ -20,6 +20,7 @@ from .config import (
     DISCLAIMER,
     MODELS_DIR,
     REGRESSION_FEATURE_COLUMNS,
+    SAFETY_UNCERTAINTY_BAND,
     USER_INPUT_FEATURES,
     USER_INPUT_SPECS,
     WEB_DIR,
@@ -83,7 +84,29 @@ class ModelService:
         safe_probability = float(probabilities[classes.index(1)])
         unsafe_probability = float(probabilities[classes.index(0)])
         threshold = float(self.metadata["classification"]["metrics"]["threshold"])
-        safe = safe_probability >= threshold
+        uncertainty_policy = self.metadata["classification"].get(
+            "uncertainty_policy",
+            {
+                "lower_safe_probability": SAFETY_UNCERTAINTY_BAND[0],
+                "upper_safe_probability": SAFETY_UNCERTAINTY_BAND[1],
+            },
+        )
+        lower_threshold = float(uncertainty_policy["lower_safe_probability"])
+        upper_threshold = float(uncertainty_policy["upper_safe_probability"])
+        if safe_probability <= lower_threshold:
+            safety_label = "Unsafe"
+            safety_code: int | None = 0
+        elif safe_probability >= upper_threshold:
+            safety_label = "Safe"
+            safety_code = 1
+        else:
+            safety_label = "Inconclusive"
+            safety_code = None
+            warnings.append(
+                f"The model's Safe probability ({safe_probability:.1%}) is between "
+                f"{lower_threshold:.0%} and {upper_threshold:.0%}; the three-input result "
+                "is inconclusive. Confirm with laboratory testing."
+            )
         confusion = self.metadata["classification"]["confusion_matrix"]
         held_out_unsafe = sum(confusion[0])
         held_out_false_safe = confusion[0][1]
@@ -91,8 +114,9 @@ class ModelService:
         if safety_prediction_caution:
             false_safe_rate = held_out_false_safe / held_out_unsafe
             warnings.append(
-                f"On held-out evaluation, the safety model marked {held_out_false_safe} of "
-                f"{held_out_unsafe} unsafe samples as Safe (false-safe rate {false_safe_rate:.1%}); "
+                f"At the standard 50% decision threshold, held-out evaluation marked "
+                f"{held_out_false_safe} of {held_out_unsafe} unsafe samples as Safe "
+                f"(false-safe rate {false_safe_rate:.1%}); "
                 "do not use this prediction alone to determine water safety."
             )
         unused_metrics = [
@@ -149,12 +173,13 @@ class ModelService:
                 }
             )
         return {
-            "safety_label": "Safe" if safe else "Unsafe",
-            "safety_code": 1 if safe else 0,
+            "safety_label": safety_label,
+            "safety_code": safety_code,
             "safety_prediction_caution": safety_prediction_caution,
             "safe_probability": round(safe_probability, 6),
             "unsafe_probability": round(unsafe_probability, 6),
             "classification_threshold": threshold,
+            "safety_uncertainty_band": [lower_threshold, upper_threshold],
             "predicted_ph": round(predicted_ph, 4),
             "ph_potability_input": "classifier Safe probability",
             "ph_classifier_safe_probability": round(safe_probability, 6),

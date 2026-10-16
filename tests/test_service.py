@@ -19,7 +19,7 @@ class ModelServiceTests(unittest.TestCase):
     def test_predict_returns_both_tasks(self) -> None:
         payload = {"Turbidity": 1, "Hardness": 180, "TDS": 450}
         result = self.service.predict(payload)
-        self.assertIn(result["safety_code"], (0, 1))
+        self.assertIn(result["safety_code"], (0, 1, None))
         self.assertEqual(
             result["safety_prediction_caution"],
             sum(self.service.metadata["classification"]["confusion_matrix"][0]) > 0
@@ -40,6 +40,18 @@ class ModelServiceTests(unittest.TestCase):
         self.assertEqual(len(result["input_guidance"]), 3)
         self.assertTrue(any("classifier's predicted Safe probability" in warning for warning in result["warnings"]))
         self.assertTrue(any("outside the central 98%" in warning and "TDS" in warning for warning in result["warnings"]))
+
+    def test_ambiguous_three_input_safety_result_is_inconclusive(self) -> None:
+        result = self.service.predict(
+            {"Turbidity": 2.86, "Hardness": 212.12, "TDS": 15569.18}
+        )
+        self.assertEqual(result["safety_label"], "Inconclusive")
+        self.assertIsNone(result["safety_code"])
+        self.assertEqual(result["safety_uncertainty_band"], [0.3, 0.7])
+        self.assertTrue(
+            any("three-input result is inconclusive" in warning for warning in result["warnings"])
+        )
+        self.assertTrue(result["ph_prediction_caution"])
 
     def test_predict_rejects_incomplete_panel(self) -> None:
         payload = {"Turbidity": 1, "Hardness": 100}

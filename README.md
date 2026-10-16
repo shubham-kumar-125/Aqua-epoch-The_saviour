@@ -14,7 +14,7 @@ A complete, reproducible submission for the Aqua-Epoch machine-learning and web-
 
 This is a decision-support prototype, not a drinking-water certification system. A model prediction must never replace BIS testing, local regulation, or laboratory confirmation. The supplied dataset has major quality concerns: pH labels are missing or physically out of range, and the cleaned TDS median is about 20,773 mg/L (BIS acceptable guidance is 500 mg/L). Verify the source, units, and labels before relying on any result.
 
-The dashboard asks only for **Turbidity, Total Hardness, and TDS**. Both deployed models are trained on these same values, so they do not depend on hidden median-filled chemistry inputs. The pH regressor consumes a cross-fitted Safe probability from the classifier. Current dataset experiments still show weak pH signal, which is surfaced in the app.
+The dashboard asks only for **Turbidity, Total Hardness, and TDS**. Both deployed models are trained on these same values, so they do not depend on hidden median-filled chemistry inputs. The live safety result is **Inconclusive** for intermediate Safe probabilities (30–70%); this avoids making a confident binary claim when the three inputs are ambiguous. The pH regressor consumes a cross-fitted Safe probability from the classifier. Its weak held-out signal is prominent in the app; treat its numeric output as experimental, not reliable.
 
 API clients may additionally provide Fluoride, Nitrate, Conductivity, and Alkalinity in the same `POST /api/predict` JSON body for compatibility; the current models ignore these optional values and disclose that in the response. Inputs outside the central 98% of the training distribution are flagged.
 
@@ -22,7 +22,7 @@ API clients may additionally provide Fluoride, Nitrate, Conductivity, and Alkali
 
 `python run.py train` evaluates candidate models using the exact three-field deployment input. Task A selects by five-fold stratified ROC-AUC and Task B by five-fold MAE. Both are reported on a shared 23% held-out split with seed 15. The pH model uses cross-fitted classifier probabilities, not observed Potability labels, during training.
 
-The pH model's weak held-out R² is a data-quality finding, not a reason to claim high accuracy. With only the three form measurements, the supplied dataset may not contain enough signal for reliable pH estimation. The project reports held-out MAE, RMSE, R², and cross-validation results transparently.
+The three-input classifier has conflicting labels among near-identical samples, so its probability is not a definitive water-safety determination. Adding Fluoride, Nitrate, and Conductivity substantially improved offline classification, but the simplified form was intentionally retained. The pH model's weak held-out R² is a data-quality finding, not a reason to claim high accuracy. With only the form measurements, the supplied dataset does not contain enough signal for reliable pH estimation. The project reports held-out MAE, RMSE, R², and cross-validation results transparently.
 
 ## Quick start
 
